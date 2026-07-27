@@ -67,6 +67,7 @@ def serialize_category(
         "image_url": category.image_url,
         "is_active": category.is_active,
         "position": category.position,
+        "is_reels": bool(getattr(category, "is_reels", False)),
         "subcategory_count": subcategory_count,
         "product_count": product_count,
         "subcategories": subcategories or [],
@@ -193,12 +194,15 @@ async def update_category(db: AsyncSession, category_id: int, data: dict) -> Opt
     if not category:
         return None
 
-    data = {k: v for k, v in data.items() if k != "product_ids"}
+    data = {k: v for k, v in data.items() if k not in ("product_ids", "is_reels", "slug")}
     for key, value in data.items():
         if hasattr(category, key) and value is not None:
             setattr(category, key, value)
 
-    if "name" in data and data["name"]:
+    # Reels category keeps a fixed slug so storefront routing stays stable
+    if category.is_reels:
+        category.slug = "reels"
+    elif "name" in data and data["name"]:
         category.slug = await _unique_slug(
             db, Category, data["name"], exclude_id=category.id
         )
@@ -212,6 +216,9 @@ async def delete_category(db: AsyncSession, category_id: int) -> bool:
     category = result.scalar_one_or_none()
     if not category:
         return False
+
+    if category.is_reels:
+        raise ValueError("Reels category cannot be deleted")
 
     # Clear product FKs first
     sub_ids = (

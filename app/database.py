@@ -313,7 +313,14 @@ async def connect_db():
             )
         )
 
+        await conn.execute(
+            text(
+                "ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_reels BOOLEAN DEFAULT FALSE"
+            )
+        )
+
     await seed_admin()
+    await ensure_reels_category()
     await _migrate_products_to_subcategories()
     await _backfill_product_subcategories()
     print("PostgreSQL connected and tables ready")
@@ -423,6 +430,43 @@ async def seed_admin():
             existing.name = settings.ADMIN_USERNAME
             print(f"Admin password synced: {settings.ADMIN_USERNAME}")
         await session.commit()
+
+
+async def ensure_reels_category():
+    """Ensure the special Reels category exists for admin + storefront."""
+    from sqlalchemy import select
+
+    from app.models import Category
+
+    async with AsyncSessionLocal() as session:
+        existing = (
+            await session.execute(
+                select(Category).where(
+                    (Category.is_reels == True) | (Category.slug == "reels")  # noqa: E712
+                )
+            )
+        ).scalar_one_or_none()
+
+        if existing:
+            if not existing.is_reels:
+                existing.is_reels = True
+            if existing.slug != "reels":
+                existing.slug = "reels"
+            await session.commit()
+            return
+
+        session.add(
+            Category(
+                name="Reels",
+                slug="reels",
+                description="Watch product videos and shop from Reels",
+                is_active=True,
+                position=2,
+                is_reels=True,
+            )
+        )
+        await session.commit()
+        print("Reels category seeded")
 
 
 async def seed_default_categories():

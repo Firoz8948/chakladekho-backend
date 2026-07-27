@@ -56,6 +56,7 @@ class CategoryResponse(BaseModel):
     image_url: Optional[str]
     is_active: bool
     position: int
+    is_reels: bool = False
     subcategory_count: int = 0
     product_count: int = 0
     subcategories: Optional[List[SubCategoryResponse]] = None

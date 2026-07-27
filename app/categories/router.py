@@ -178,7 +178,10 @@ async def delete_category(
     admin=Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    deleted = await service.delete_category(db, category_id)
+    try:
+        deleted = await service.delete_category(db, category_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Category not found")
     return {"message": "Category deleted"}
