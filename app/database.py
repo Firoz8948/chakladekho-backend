@@ -238,6 +238,46 @@ async def connect_db():
         )
         await conn.execute(
             text(
+                "ALTER TABLE products ADD COLUMN IF NOT EXISTS length_cm DOUBLE PRECISION"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE products ADD COLUMN IF NOT EXISTS breadth_cm DOUBLE PRECISION"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE products ADD COLUMN IF NOT EXISTS height_cm DOUBLE PRECISION"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE video_products ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]'"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE video_products ADD COLUMN IF NOT EXISTS weight DOUBLE PRECISION"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE video_products ADD COLUMN IF NOT EXISTS length_cm DOUBLE PRECISION"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE video_products ADD COLUMN IF NOT EXISTS breadth_cm DOUBLE PRECISION"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE video_products ADD COLUMN IF NOT EXISTS height_cm DOUBLE PRECISION"
+            )
+        )
+        await conn.execute(
+            text(
                 "CREATE INDEX IF NOT EXISTS ix_products_subcategory_id "
                 "ON products(subcategory_id)"
             )

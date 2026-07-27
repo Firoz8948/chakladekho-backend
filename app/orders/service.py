@@ -49,6 +49,11 @@ async def create_customer_order(
     razorpay_payment_id: str | None = None,
     razorpay_order_id: str | None = None,
     promo_code: str | None = None,
+    meta_event_id: str | None = None,
+    meta_fbp: str | None = None,
+    meta_fbc: str | None = None,
+    client_ip: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     if not items:
         raise HTTPException(status_code=400, detail="Cart is empty")
@@ -144,6 +149,21 @@ async def create_customer_order(
         payload = serialize_order(order)
         if shipment_data:
             payload["shipment"] = shipment_data
+
+        try:
+            from app.meta import capi
+
+            await capi.track_purchase(
+                order=payload,
+                event_id=meta_event_id or order.order_id,
+                fbp=meta_fbp,
+                fbc=meta_fbc,
+                client_ip=client_ip,
+                user_agent=user_agent,
+            )
+        except Exception as exc:
+            logger.warning("Meta CAPI Purchase failed: %s", exc)
+
         return payload
 
 
@@ -169,6 +189,9 @@ async def create_order_from_checkout(
         razorpay_payment_id=razorpay_payment_id,
         razorpay_order_id=razorpay_order_id,
         promo_code=checkout.get("promo_code"),
+        meta_event_id=checkout.get("meta_event_id"),
+        meta_fbp=checkout.get("meta_fbp"),
+        meta_fbc=checkout.get("meta_fbc"),
     )
 
 

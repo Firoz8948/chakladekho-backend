@@ -278,6 +278,18 @@ async def list_video_products(
     return [_vp_to_dict(vp) for vp in items]
 
 
+async def _upload_vp_images(files: list[UploadFile] | None) -> list[str]:
+    urls: list[str] = []
+    for f in files or []:
+        if f and f.filename:
+            urls.append(
+                await upload_file(
+                    f, "video-products", allowed_ext=ALLOWED_IMAGE_EXT, default_ext=".jpg"
+                )
+            )
+    return urls
+
+
 @router.post("/video-products", status_code=201)
 async def create_video_product(
     name: str = Form(...),
@@ -290,15 +302,32 @@ async def create_video_product(
     position: int = Form(0),
     is_active: bool = Form(True),
     product_id: int = Form(None),
+    weight: float = Form(None),
+    length_cm: float = Form(None),
+    breadth_cm: float = Form(None),
+    height_cm: float = Form(None),
+    images_json: str = Form("[]"),
     video: UploadFile = File(None),
+    images: list[UploadFile] = File(None),
     _=Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    import json
+
     video_url = None
     if video and video.filename:
         video_url = await upload_file(
             video, "videos", allowed_ext=ALLOWED_VIDEO_EXT, default_ext=".mp4"
         )
+
+    try:
+        existing = json.loads(images_json or "[]")
+        if not isinstance(existing, list):
+            existing = []
+    except Exception:
+        existing = []
+    uploaded = await _upload_vp_images(images if isinstance(images, list) else ([images] if images else []))
+    image_urls = [*existing, *uploaded]
 
     vp = VideoProduct(
         name=name,
@@ -312,6 +341,11 @@ async def create_video_product(
         is_active=is_active,
         product_id=product_id,
         video_url=video_url,
+        images=image_urls,
+        weight=weight,
+        length_cm=length_cm,
+        breadth_cm=breadth_cm,
+        height_cm=height_cm,
     )
     db.add(vp)
     await db.commit()
@@ -332,11 +366,19 @@ async def update_video_product(
     position: int = Form(None),
     is_active: bool = Form(None),
     product_id: int = Form(None),
+    weight: float = Form(None),
+    length_cm: float = Form(None),
+    breadth_cm: float = Form(None),
+    height_cm: float = Form(None),
+    images_json: str = Form(None),
     video: UploadFile = File(None),
+    images: list[UploadFile] = File(None),
     _=Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    import json
     from sqlalchemy import select
+
     result = await db.execute(select(VideoProduct).where(VideoProduct.id == vp_id))
     vp = result.scalar_one_or_none()
     if not vp:
@@ -362,11 +404,36 @@ async def update_video_product(
         vp.is_active = is_active
     if product_id is not None:
         vp.product_id = product_id
+    if weight is not None:
+        vp.weight = weight
+    if length_cm is not None:
+        vp.length_cm = length_cm
+    if breadth_cm is not None:
+        vp.breadth_cm = breadth_cm
+    if height_cm is not None:
+        vp.height_cm = height_cm
 
     if video and video.filename:
         vp.video_url = await upload_file(
             video, "videos", allowed_ext=ALLOWED_VIDEO_EXT, default_ext=".mp4"
         )
+
+    if images_json is not None:
+        try:
+            kept = json.loads(images_json or "[]")
+            if not isinstance(kept, list):
+                kept = []
+        except Exception:
+            kept = list(vp.images or [])
+        uploaded = await _upload_vp_images(
+            images if isinstance(images, list) else ([images] if images else [])
+        )
+        vp.images = [*kept, *uploaded]
+    elif images:
+        uploaded = await _upload_vp_images(
+            images if isinstance(images, list) else [images]
+        )
+        vp.images = [*(vp.images or []), *uploaded]
 
     await db.commit()
     await db.refresh(vp)
@@ -400,8 +467,14 @@ def _vp_to_dict(vp: VideoProduct) -> dict:
         "stock": vp.stock,
         "unit": vp.unit,
         "video_url": vp.video_url,
+        "images": list(vp.images or []),
+        "weight": vp.weight,
+        "length_cm": vp.length_cm,
+        "breadth_cm": vp.breadth_cm,
+        "height_cm": vp.height_cm,
         "is_active": vp.is_active,
         "position": vp.position,
         "product_id": vp.product_id,
+        "slug": f"video-{vp.id}",
         "created_at": vp.created_at.isoformat() if vp.created_at else None,
     }

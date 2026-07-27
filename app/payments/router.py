@@ -35,6 +35,9 @@ async def create_order(
         items,
         user_id=int(user["id"]),
         promo_code=payload.promo_code,
+        meta_event_id=payload.meta_event_id,
+        meta_fbp=payload.meta_fbp,
+        meta_fbc=payload.meta_fbc,
     )
 
 

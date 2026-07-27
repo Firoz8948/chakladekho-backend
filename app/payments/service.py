@@ -89,12 +89,21 @@ async def create_payment_order(
     items: list[dict],
     user_id: int | None = None,
     promo_code: str | None = None,
+    meta_event_id: str | None = None,
+    meta_fbp: str | None = None,
+    meta_fbc: str | None = None,
 ) -> dict:
     if not items:
         raise HTTPException(status_code=400, detail="Cart is empty")
 
     checkout = await _build_checkout(customer, address, items, promo_code=promo_code)
     checkout["user_id"] = user_id
+    if meta_event_id:
+        checkout["meta_event_id"] = meta_event_id
+    if meta_fbp:
+        checkout["meta_fbp"] = meta_fbp
+    if meta_fbc:
+        checkout["meta_fbc"] = meta_fbc
     amount_paise = int(round(checkout["total"] * 100))
     if amount_paise < 100:
         raise HTTPException(
@@ -259,6 +268,16 @@ async def verify_payment(payload: dict, user_id: int | None = None) -> dict:
 
         if payment.status == "refunded":
             raise HTTPException(status_code=400, detail="Payment was refunded")
+
+        # Merge Meta cookies/event id from verify payload into checkout snapshot
+        snap = dict(payment.checkout_snapshot or {})
+        if payload.get("meta_event_id"):
+            snap["meta_event_id"] = payload["meta_event_id"]
+        if payload.get("meta_fbp"):
+            snap["meta_fbp"] = payload["meta_fbp"]
+        if payload.get("meta_fbc"):
+            snap["meta_fbc"] = payload["meta_fbc"]
+        payment.checkout_snapshot = snap
 
         rzp_payment = _fetch_razorpay_payment(razorpay_payment_id)
         _assert_payment_amount(rzp_payment, payment.amount)

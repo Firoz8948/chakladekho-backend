@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     BUNNY_STORAGE_REGION: str = "sg"
     BUNNY_CDN_URL: str = "https://mkharavad-media.b-cdn.net"
 
+    # Meta / Facebook Ads
+    META_PIXEL_ID: str = ""
+    META_ACCESS_TOKEN: str = ""
+    META_TEST_EVENT_CODE: str = ""
+    META_API_VERSION: str = "v21.0"
+
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
@@ -74,8 +80,12 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
+        def _clean(origin: str) -> str:
+            origin = (origin or "").strip().strip("\"'")
+            return origin.rstrip("/")
+
         origins = {
-            self.FRONTEND_URL,
+            _clean(self.FRONTEND_URL),
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "http://localhost:3001",
@@ -83,9 +93,9 @@ class Settings(BaseSettings):
         }
         if self.CORS_ORIGINS:
             for origin in self.CORS_ORIGINS.split(","):
-                origin = origin.strip()
-                if origin:
-                    origins.add(origin)
+                cleaned = _clean(origin)
+                if cleaned:
+                    origins.add(cleaned)
         return [origin for origin in origins if origin]
 
 

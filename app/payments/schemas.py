@@ -36,6 +36,9 @@ class CheckoutPayload(BaseModel):
 
 class CreatePaymentOrderRequest(CheckoutPayload):
     promo_code: str | None = None
+    meta_event_id: str | None = None
+    meta_fbp: str | None = None
+    meta_fbc: str | None = None
 
 
 class CreatePaymentOrderResponse(BaseModel):
@@ -50,6 +53,9 @@ class VerifyPaymentRequest(BaseModel):
     razorpay_order_id: str
     razorpay_payment_id: str
     razorpay_signature: str
+    meta_event_id: str | None = None
+    meta_fbp: str | None = None
+    meta_fbc: str | None = None
 
 
 class RefundPaymentRequest(BaseModel):

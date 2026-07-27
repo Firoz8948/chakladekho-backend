@@ -34,6 +34,10 @@ class GuestCreateOrderRequest(BaseModel):
     items: list[OrderItem] = Field(..., min_length=1)
     payment_method: str = Field(default="cod", description="cod | razorpay")
     promo_code: str | None = None
+    # Meta Pixel / CAPI deduplication
+    meta_event_id: str | None = None
+    meta_fbp: str | None = None
+    meta_fbc: str | None = None
 
 
 CreateOrderRequest = GuestCreateOrderRequest

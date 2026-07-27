@@ -156,6 +156,19 @@ def _build_adhoc_payload(order: Order, weight_kg: float) -> dict:
     if getattr(order, "address_landmark", None):
         address = f"{address}, {order.address_landmark}"
 
+    # Prefer largest L/B/H from cart line items when present
+    length = float(settings.SHIPROCKET_DEFAULT_LENGTH)
+    breadth = float(settings.SHIPROCKET_DEFAULT_BREADTH)
+    height = float(settings.SHIPROCKET_DEFAULT_HEIGHT)
+    for i in order.items or []:
+        info = i.variant_info if isinstance(i.variant_info, dict) else {}
+        try:
+            length = max(length, float(info.get("length_cm") or 0) or length)
+            breadth = max(breadth, float(info.get("breadth_cm") or 0) or breadth)
+            height = max(height, float(info.get("height_cm") or 0) or height)
+        except (TypeError, ValueError):
+            pass
+
     payload = {
         "order_id": order.order_id,
         "order_date": (order.created_at or utcnow()).strftime("%Y-%m-%d %H:%M"),
@@ -183,12 +196,14 @@ def _build_adhoc_payload(order: Order, weight_kg: float) -> dict:
             }
             for i in (order.items or [])
         ],
-        "payment_method": "COD" if order.payment_method == "cod" else "Prepaid",
+        "payment_method": "Prepaid"
+        if (order.payment_method or "").lower() != "cod"
+        else "COD",
         "sub_total": float(order.subtotal or 0),
-        "length": float(settings.SHIPROCKET_DEFAULT_LENGTH),
-        "breadth": float(settings.SHIPROCKET_DEFAULT_BREADTH),
-        "height": float(settings.SHIPROCKET_DEFAULT_HEIGHT),
-        "weight": round(weight_kg, 3),
+        "length": length,
+        "breadth": breadth,
+        "height": height,
+        "weight": max(round(float(weight_kg), 3), 0.5),
     }
     if settings.SHIPROCKET_CHANNEL_ID:
         payload["channel_id"] = settings.SHIPROCKET_CHANNEL_ID

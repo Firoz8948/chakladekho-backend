@@ -23,6 +23,9 @@ class ProductBase(BaseModel):
     stock: int = Field(default=0, ge=0)
     unit: str = "grams"
     weight: float | None = Field(default=None, ge=0, description="Weight value in the chosen unit")
+    length_cm: float | None = Field(default=None, ge=0)
+    breadth_cm: float | None = Field(default=None, ge=0)
+    height_cm: float | None = Field(default=None, ge=0)
     images: list[str] = []
     is_featured: bool = False
     is_active: bool = True
@@ -44,6 +47,9 @@ class ProductUpdate(BaseModel):
     stock: int | None = Field(default=None, ge=0)
     unit: str | None = None
     weight: float | None = Field(default=None, ge=0)
+    length_cm: float | None = Field(default=None, ge=0)
+    breadth_cm: float | None = Field(default=None, ge=0)
+    height_cm: float | None = Field(default=None, ge=0)
     images: list[str] | None = None
     is_featured: bool | None = None
     is_active: bool | None = None

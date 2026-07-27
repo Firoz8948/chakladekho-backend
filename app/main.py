@@ -12,6 +12,8 @@ from app.categories.router import router as categories_router
 from app.config import settings
 from app.contact.router import router as contact_router
 from app.database import connect_db, disconnect_db
+from app.feeds.router import router as feeds_router
+from app.meta.router import router as meta_router
 from app.metafields.router import router as metafields_router
 from app.orders.router import router as orders_router
 from app.otp.router import router as otp_router
@@ -64,6 +66,8 @@ app.include_router(promocodes_router, prefix=f"{prefix}/promocodes", tags=["Prom
 app.include_router(
     shipping_zones_router, prefix=f"{prefix}/shipping-zones", tags=["Shipping Zones"]
 )
+app.include_router(feeds_router, prefix=f"{prefix}/feeds", tags=["Catalog Feeds"])
+app.include_router(meta_router, prefix=f"{prefix}/meta", tags=["Meta"])
 
 
 @app.get("/")
@@ -99,7 +103,13 @@ async def public_video_products():
                 "stock": vp.stock,
                 "unit": vp.unit,
                 "video_url": vp.video_url,
+                "images": list(vp.images or []),
+                "weight": vp.weight,
+                "length_cm": vp.length_cm,
+                "breadth_cm": vp.breadth_cm,
+                "height_cm": vp.height_cm,
                 "product_id": vp.product_id,
+                "slug": f"video-{vp.id}",
             }
             for vp in items
         ]
