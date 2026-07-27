@@ -366,6 +366,7 @@ async def update_video_product(
     position: int = Form(None),
     is_active: bool = Form(None),
     product_id: int = Form(None),
+    clear_attached: bool = Form(False),
     weight: float = Form(None),
     length_cm: float = Form(None),
     breadth_cm: float = Form(None),
@@ -402,8 +403,10 @@ async def update_video_product(
         vp.position = position
     if is_active is not None:
         vp.is_active = is_active
-    if product_id is not None:
-        vp.product_id = product_id
+    if clear_attached:
+        vp.product_id = None
+    elif product_id is not None and int(product_id) > 0:
+        vp.product_id = int(product_id)
     if weight is not None:
         vp.weight = weight
     if length_cm is not None:

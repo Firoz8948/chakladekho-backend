@@ -83,8 +83,12 @@ async def health():
 @app.get(f"{prefix}/video-products")
 async def public_video_products():
     from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from app.common import serialize_product
     from app.database import AsyncSessionLocal
-    from app.models import VideoProduct
+    from app.models import Product, ProductVariant, VideoProduct
+
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(VideoProduct)
@@ -92,8 +96,23 @@ async def public_video_products():
             .order_by(VideoProduct.position)
         )
         items = result.scalars().all()
-        return [
-            {
+
+        product_ids = [vp.product_id for vp in items if vp.product_id]
+        products_by_id: dict = {}
+        if product_ids:
+            prod_result = await db.execute(
+                select(Product)
+                .options(
+                    selectinload(Product.images),
+                    selectinload(Product.variants).selectinload(ProductVariant.options),
+                )
+                .where(Product.id.in_(product_ids))
+            )
+            products_by_id = {p.id: p for p in prod_result.scalars().all()}
+
+        out = []
+        for vp in items:
+            row = {
                 "id": vp.id,
                 "name": vp.name,
                 "description": vp.description,
@@ -110,11 +129,54 @@ async def public_video_products():
                 "height_cm": vp.height_cm,
                 "product_id": vp.product_id,
                 "slug": f"video-{vp.id}",
+                "attached": False,
             }
-            for vp in items
-        ]
+            product = products_by_id.get(vp.product_id) if vp.product_id else None
+            if product:
+                pdata = serialize_product(product, include_relations=True)
+                price = pdata.get("price")
+                mrp = pdata.get("mrp")
+                stock = pdata.get("stock")
+                for variant in pdata.get("variants") or []:
+                    for opt in variant.get("options") or []:
+                        if (opt.get("stock") or 0) > 0:
+                            price = opt.get("price", price)
+                            mrp = opt.get("mrp", mrp)
+                            stock = opt.get("stock", stock)
+                            break
+                    else:
+                        continue
+                    break
 
-
+                row.update(
+                    {
+                        "name": pdata.get("name") or row["name"],
+                        "description": pdata.get("description") or row["description"],
+                        "price": price if price is not None else row["price"],
+                        "mrp": mrp if mrp is not None else row["mrp"],
+                        "category": pdata.get("category") or row["category"],
+                        "stock": stock if stock is not None else row["stock"],
+                        "unit": pdata.get("unit") or row["unit"],
+                        "images": pdata.get("images") or row["images"],
+                        "weight": pdata.get("weight")
+                        if pdata.get("weight") is not None
+                        else row["weight"],
+                        "length_cm": pdata.get("length_cm")
+                        if pdata.get("length_cm") is not None
+                        else row["length_cm"],
+                        "breadth_cm": pdata.get("breadth_cm")
+                        if pdata.get("breadth_cm") is not None
+                        else row["breadth_cm"],
+                        "height_cm": pdata.get("height_cm")
+                        if pdata.get("height_cm") is not None
+                        else row["height_cm"],
+                        "product_id": product.id,
+                        "slug": pdata.get("slug") or f"product-{product.id}",
+                        "attached": True,
+                    }
+                )
+            out.append(row)
+        return out
 
 
 def main() -> None:
