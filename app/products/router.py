@@ -12,7 +12,6 @@ async def get_products(
     page_size: int = Query(12, ge=1, le=100),
     category: str | None = None,
     category_slug: str | None = None,
-    subcategory_slug: str | None = None,
     search: str | None = None,
     sort: str | None = None,
 ):
@@ -21,7 +20,6 @@ async def get_products(
         page_size=page_size,
         category=category,
         category_slug=category_slug,
-        subcategory_slug=subcategory_slug,
         search=search,
         sort=sort,
     )

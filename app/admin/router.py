@@ -6,7 +6,7 @@ from app.database import get_db
 from app.models import VideoProduct
 from app.payments import service as payments_service
 from app.shipping import service as shipping_service
-from app.storage.bunny import ALLOWED_IMAGE_EXT, ALLOWED_VIDEO_EXT, upload_file
+from app.storage import ALLOWED_IMAGE_EXT, ALLOWED_VIDEO_EXT, upload_file
 
 from . import service
 from .schemas import (

@@ -110,46 +110,10 @@ class Category(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    subcategories: Mapped[list["SubCategory"]] = relationship(
-        "SubCategory",
-        back_populates="category",
-        cascade="all, delete-orphan",
-        order_by="SubCategory.position",
-    )
     products: Mapped[list["Product"]] = relationship(
         "Product",
         back_populates="category_rel",
         foreign_keys="Product.category_id",
-    )
-
-
-class SubCategory(Base):
-    __tablename__ = "subcategories"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    category_id: Mapped[int] = mapped_column(
-        ForeignKey("categories.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
-    slug: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
-    description: Mapped[Optional[str]] = mapped_column(Text)
-    image_url: Mapped[Optional[str]] = mapped_column(String(500))
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    position: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-    category: Mapped["Category"] = relationship(
-        "Category", back_populates="subcategories"
-    )
-    products: Mapped[list["Product"]] = relationship(
-        "Product",
-        back_populates="subcategory_rel",
-        foreign_keys="Product.subcategory_id",
     )
 
 
@@ -164,9 +128,6 @@ class Product(Base):
     mrp: Mapped[float] = mapped_column(Float, nullable=False)
     category_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("categories.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    subcategory_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("subcategories.id", ondelete="SET NULL"), nullable=True, index=True
     )
     category: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     stock: Mapped[int] = mapped_column(Integer, default=0)
@@ -189,14 +150,6 @@ class Product(Base):
     category_rel: Mapped[Optional["Category"]] = relationship(
         "Category", back_populates="products", foreign_keys=[category_id]
     )
-    subcategory_rel: Mapped[Optional["SubCategory"]] = relationship(
-        "SubCategory", back_populates="products", foreign_keys=[subcategory_id]
-    )
-    subcategory_links: Mapped[list["ProductSubcategory"]] = relationship(
-        "ProductSubcategory",
-        back_populates="product",
-        cascade="all, delete-orphan",
-    )
     images: Mapped[list["ProductImage"]] = relationship(
         "ProductImage",
         back_populates="product",
@@ -208,26 +161,6 @@ class Product(Base):
         back_populates="product",
         cascade="all, delete-orphan",
     )
-
-
-class ProductSubcategory(Base):
-    """Many-to-many: one product can belong to multiple subcategories."""
-
-    __tablename__ = "product_subcategories"
-
-    product_id: Mapped[int] = mapped_column(
-        ForeignKey("products.id", ondelete="CASCADE"), primary_key=True
-    )
-    subcategory_id: Mapped[int] = mapped_column(
-        ForeignKey("subcategories.id", ondelete="CASCADE"),
-        primary_key=True,
-        index=True,
-    )
-
-    product: Mapped["Product"] = relationship(
-        "Product", back_populates="subcategory_links"
-    )
-    subcategory: Mapped["SubCategory"] = relationship("SubCategory")
 
 
 class ProductImage(Base):
@@ -530,6 +463,10 @@ class PromoCode(Base):
     percent_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     valid_from: Mapped[date] = mapped_column(Date, nullable=False)
     valid_to: Mapped[date] = mapped_column(Date, nullable=False)
+    # all = anyone; new_users = first-time buyers only (by phone / user_id)
+    audience: Mapped[str] = mapped_column(String(20), nullable=False, default="all")
+    max_uses: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    uses_count: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

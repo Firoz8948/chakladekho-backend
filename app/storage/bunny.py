@@ -1,13 +1,21 @@
-import uuid
-from pathlib import Path
-
 import httpx
 from fastapi import HTTPException, UploadFile
 
 from app.config import get_settings
+from app.storage.base import (
+    ALLOWED_IMAGE_EXT,
+    ALLOWED_VIDEO_EXT,
+    build_key,
+    validate_ext,
+)
 
-ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
-ALLOWED_VIDEO_EXT = {".mp4", ".webm", ".mov", ".avi"}
+__all__ = [
+    "ALLOWED_IMAGE_EXT",
+    "ALLOWED_VIDEO_EXT",
+    "delete_file",
+    "is_configured",
+    "upload_file",
+]
 
 _REGION_HOSTS = {
     "de": "storage.bunnycdn.com",
@@ -30,13 +38,13 @@ def _cdn_url(cdn_base: str, key: str) -> str:
     return f"{cdn_base.rstrip('/')}/{key}"
 
 
-def _validate_ext(filename: str | None, allowed: set[str], default: str = ".jpg") -> str:
-    ext = Path(filename or "").suffix.lower()
-    if not ext:
-        ext = default
-    if ext not in allowed:
-        raise HTTPException(status_code=400, detail="Unsupported file type")
-    return ext
+def is_configured() -> bool:
+    settings = get_settings()
+    return bool(
+        settings.BUNNY_STORAGE_API_KEY
+        and settings.BUNNY_STORAGE_ZONE
+        and settings.BUNNY_CDN_URL
+    )
 
 
 async def upload_file(
@@ -47,14 +55,18 @@ async def upload_file(
     default_ext: str = ".jpg",
 ) -> str:
     settings = get_settings()
-    if not settings.BUNNY_STORAGE_API_KEY:
+    if not is_configured():
         raise HTTPException(
             status_code=500,
-            detail="BunnyCDN storage is not configured (BUNNY_STORAGE_API_KEY missing)",
+            detail=(
+                "BunnyCDN storage is not configured "
+                "(set BUNNY_STORAGE_API_KEY, BUNNY_STORAGE_ZONE and BUNNY_CDN_URL, "
+                "or set STORAGE_BACKEND=local)"
+            ),
         )
 
-    ext = _validate_ext(file.filename, allowed_ext, default_ext)
-    key = f"{folder.strip('/')}/{uuid.uuid4().hex}{ext}"
+    ext = validate_ext(file.filename, allowed_ext, default_ext)
+    key = build_key(folder, ext)
     content = await file.read()
 
     host = _storage_host(settings.BUNNY_STORAGE_REGION)
@@ -89,7 +101,7 @@ async def upload_file(
 async def delete_file(url: str) -> None:
     """Delete a file from Bunny storage using its public CDN URL."""
     settings = get_settings()
-    if not url or not settings.BUNNY_STORAGE_API_KEY:
+    if not url or not is_configured():
         return
 
     cdn_base = settings.BUNNY_CDN_URL.rstrip("/")

@@ -4,23 +4,23 @@
 services:
   postgres:
     image: postgres:15
-    container_name: mkharavad_postgres
+    container_name: chakladkho_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: mkharavad
+      POSTGRES_USER: chakladkho
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: mkharavad
+      POSTGRES_DB: chakladkho
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mkharavad -d mkharavad"]
+      test: ["CMD-SHELL", "pg_isready -U chakladkho -d chakladkho"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   backend:
     build: .
-    container_name: mkharavad_backend
+    container_name: chakladkho_backend
     restart: unless-stopped
     depends_on:
       postgres:

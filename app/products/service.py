@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.common import serialize_product, utcnow
 from app.database import AsyncSessionLocal
-from app.models import Category, Product, ProductImage, ProductVariant, ProductVariantOption, SubCategory
+from app.models import Category, Product, ProductImage, ProductVariant, ProductVariantOption
 
 
 def slugify(text: str) -> str:
@@ -52,7 +52,6 @@ async def list_products(
     page_size: int = 12,
     category: str | None = None,
     category_slug: str | None = None,
-    subcategory_slug: str | None = None,
     search: str | None = None,
     featured: bool | None = None,
     sort: str | None = None,
@@ -62,7 +61,7 @@ async def list_products(
         query = select(Product).options(
             selectinload(Product.images),
             selectinload(Product.variants).selectinload(ProductVariant.options),
-            selectinload(Product.subcategory_links),
+            selectinload(Product.category_rel),
         )
         count_query = select(func.count(Product.id))
 
@@ -70,50 +69,13 @@ async def list_products(
             query = query.where(Product.is_active == True)  # noqa: E712
             count_query = count_query.where(Product.is_active == True)  # noqa: E712
 
-        if subcategory_slug:
-            sub_result = await db.execute(
-                select(SubCategory).where(SubCategory.slug == subcategory_slug)
-            )
-            sub = sub_result.scalar_one_or_none()
-            if sub:
-                from app.models import ProductSubcategory
-
-                filt = Product.id.in_(
-                    select(ProductSubcategory.product_id).where(
-                        ProductSubcategory.subcategory_id == sub.id
-                    )
-                )
-                query = query.where(filt)
-                count_query = count_query.where(filt)
-            else:
-                query = query.where(Product.id == -1)
-                count_query = count_query.where(Product.id == -1)
-        elif category_slug:
+        if category_slug:
             cat_result = await db.execute(
                 select(Category).where(Category.slug == category_slug)
             )
             cat = cat_result.scalar_one_or_none()
             if cat:
-                from app.models import ProductSubcategory
-
-                sub_ids = (
-                    await db.execute(
-                        select(SubCategory.id).where(
-                            SubCategory.category_id == cat.id
-                        )
-                    )
-                ).scalars().all()
-                if sub_ids:
-                    filt = or_(
-                        Product.category_id == cat.id,
-                        Product.id.in_(
-                            select(ProductSubcategory.product_id).where(
-                                ProductSubcategory.subcategory_id.in_(sub_ids)
-                            )
-                        ),
-                    )
-                else:
-                    filt = Product.category_id == cat.id
+                filt = Product.category_id == cat.id
                 query = query.where(filt)
                 count_query = count_query.where(filt)
             else:
@@ -169,9 +131,7 @@ async def get_product_by_slug(slug: str) -> dict:
             .options(
                 selectinload(Product.images),
                 selectinload(Product.variants).selectinload(ProductVariant.options),
-                selectinload(Product.subcategory_links),
                 selectinload(Product.category_rel),
-                selectinload(Product.subcategory_rel),
             )
             .where(Product.slug == slug, Product.is_active == True)  # noqa: E712
         )
@@ -188,7 +148,7 @@ async def get_product_by_id(product_id: int | str) -> dict:
             .options(
                 selectinload(Product.images),
                 selectinload(Product.variants).selectinload(ProductVariant.options),
-                selectinload(Product.subcategory_links),
+                selectinload(Product.category_rel),
             )
             .where(Product.id == int(product_id))
         )
@@ -205,7 +165,7 @@ async def update_product(product_id: int | str, updates: dict) -> dict:
             .options(
                 selectinload(Product.images),
                 selectinload(Product.variants).selectinload(ProductVariant.options),
-                selectinload(Product.subcategory_links),
+                selectinload(Product.category_rel),
             )
             .where(Product.id == int(product_id))
         )

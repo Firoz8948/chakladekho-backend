@@ -5,7 +5,7 @@ from app.auth.dependencies import get_current_admin
 from app.banners import service
 from app.banners.schemas import BannerCreateRequest, BannerUpdateRequest
 from app.database import get_db
-from app.storage.bunny import upload_file
+from app.storage import upload_file
 
 router = APIRouter()
 

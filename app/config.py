@@ -7,7 +7,7 @@ _ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 
 class Settings(BaseSettings):
-    APP_NAME: str = "M Kharavad Company"
+    APP_NAME: str = "ChaklaDekho"
     ENVIRONMENT: str = "development"
     API_V1_PREFIX: str = "/api/v1"
     FRONTEND_URL: str = "http://localhost:3000"
@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = ""
 
     DATABASE_URL: str = (
-        "postgresql+asyncpg://postgres:postgres@localhost:5432/mkharavad"
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/chakladekho"
     )
 
     JWT_SECRET_KEY: str = "change-me-in-production"
@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_FROM_NUMBER: str = ""
 
-    ADMIN_EMAIL: str = "admin@mkharavad.com"
+    ADMIN_EMAIL: str = "admin@chakladkho.com"
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "admin"
 
@@ -60,11 +60,15 @@ class Settings(BaseSettings):
     SHIPROCKET_DEFAULT_BREADTH: float = 10
     SHIPROCKET_DEFAULT_HEIGHT: float = 10
 
-    # BunnyCDN Storage (replaces local uploads / S3)
-    BUNNY_STORAGE_ZONE: str = "mkharavad-media"
+    # Media storage: "auto" uses BunnyCDN when configured, otherwise local disk
+    STORAGE_BACKEND: str = "auto"
+    # Local upload directory; relative paths resolve against the backend root
+    UPLOAD_DIR: str = ""
+
+    BUNNY_STORAGE_ZONE: str = ""
     BUNNY_STORAGE_API_KEY: str = ""
     BUNNY_STORAGE_REGION: str = "sg"
-    BUNNY_CDN_URL: str = "https://mkharavad-media.b-cdn.net"
+    BUNNY_CDN_URL: str = ""
 
     # Meta / Facebook Ads
     META_PIXEL_ID: str = ""

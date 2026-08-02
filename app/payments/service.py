@@ -48,6 +48,7 @@ async def _build_checkout(
     address: dict,
     items: list[dict],
     promo_code: str | None = None,
+    user_id: int | None = None,
 ) -> dict:
     normalized = normalize_items(items)
     subtotal = calc_subtotal(normalized)
@@ -68,7 +69,13 @@ async def _build_checkout(
         )
         if promo_code:
             discount, shipping, applied_code = await promo_service.resolve_promo_for_order(
-                db, promo_code, subtotal, shipping
+                db,
+                promo_code,
+                subtotal,
+                shipping,
+                user_id=user_id,
+                phone=customer.get("phone") or customer.get("mobile"),
+                consume=False,
             )
 
     return {
@@ -96,7 +103,9 @@ async def create_payment_order(
     if not items:
         raise HTTPException(status_code=400, detail="Cart is empty")
 
-    checkout = await _build_checkout(customer, address, items, promo_code=promo_code)
+    checkout = await _build_checkout(
+        customer, address, items, promo_code=promo_code, user_id=user_id
+    )
     checkout["user_id"] = user_id
     if meta_event_id:
         checkout["meta_event_id"] = meta_event_id

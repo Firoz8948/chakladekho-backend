@@ -79,7 +79,13 @@ async def create_customer_order(
         applied_code = None
         if promo_code:
             discount, shipping, applied_code = await promo_service.resolve_promo_for_order(
-                db, promo_code, subtotal, shipping
+                db,
+                promo_code,
+                subtotal,
+                shipping,
+                user_id=user_id,
+                phone=_customer_phone(customer),
+                consume=True,
             )
 
         order = Order(

@@ -1,5 +1,4 @@
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +21,7 @@ from app.products.router import router as products_router
 from app.promocodes.router import router as promocodes_router
 from app.shipping.router import router as shipping_router
 from app.shipping_zones.router import router as shipping_zones_router
+from app.storage.local import UPLOADS_DIR
 
 prefix = settings.API_V1_PREFIX
 
@@ -47,9 +47,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-uploads_path = Path("uploads")
-uploads_path.mkdir(exist_ok=True)
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 
 app.include_router(products_router, prefix=f"{prefix}/products", tags=["Products"])
 app.include_router(categories_router, prefix=f"{prefix}/categories", tags=["Categories"])
@@ -72,7 +71,7 @@ app.include_router(meta_router, prefix=f"{prefix}/meta", tags=["Meta"])
 
 @app.get("/")
 async def root():
-    return {"message": "M Kharavad Company API", "docs": "/docs"}
+    return {"message": "ChaklaDekho API", "docs": "/docs"}
 
 
 @app.get("/health")

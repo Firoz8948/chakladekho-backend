@@ -61,6 +61,8 @@ class ProductUpdate(BaseModel):
 class ProductResponse(ProductBase):
     id: str
     slug: str
+    category_id: int | None = None
+    category_slug: str | None = None
 
 
 class PaginatedProducts(BaseModel):

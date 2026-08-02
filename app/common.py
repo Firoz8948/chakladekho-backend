@@ -18,13 +18,6 @@ def serialize_product(product, include_relations=True) -> dict:
         except Exception:
             return None
 
-    subcategory_ids = []
-    links = _loaded("subcategory_links")
-    if links:
-        subcategory_ids = [link.subcategory_id for link in links]
-    if not subcategory_ids and getattr(product, "subcategory_id", None):
-        subcategory_ids = [product.subcategory_id]
-
     data = {
         "id": str(product.id),
         "name": product.name,
@@ -34,10 +27,7 @@ def serialize_product(product, include_relations=True) -> dict:
         "mrp": product.mrp,
         "category": product.category,
         "category_id": product.category_id,
-        "subcategory_id": getattr(product, "subcategory_id", None),
-        "subcategory_ids": subcategory_ids,
         "category_slug": None,
-        "subcategory_slug": None,
         "stock": product.stock,
         "unit": product.unit,
         "weight": product.weight,
@@ -54,9 +44,6 @@ def serialize_product(product, include_relations=True) -> dict:
     cat_rel = _loaded("category_rel")
     if cat_rel is not None:
         data["category_slug"] = getattr(cat_rel, "slug", None)
-    sub_rel = _loaded("subcategory_rel")
-    if sub_rel is not None:
-        data["subcategory_slug"] = getattr(sub_rel, "slug", None)
     if include_relations:
         images = _loaded("images")
         data["images"] = [img.url for img in (images or [])]

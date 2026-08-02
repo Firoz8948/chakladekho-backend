@@ -48,14 +48,12 @@ async def connect_db():
         Payment,
         Product,
         ProductImage,
-        ProductSubcategory,
         ProductVariant,
         ProductVariantOption,
         PromoCode,
         MetafieldDefinition,
         Shipment,
         ShippingZone,
-        SubCategory,
         User,
         VideoProduct,
     )
@@ -158,6 +156,31 @@ async def connect_db():
         )
         await conn.execute(
             text(
+                "ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS audience VARCHAR(20) DEFAULT 'all'"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS max_uses INTEGER"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS uses_count INTEGER DEFAULT 0"
+            )
+        )
+        await conn.execute(
+            text(
+                "UPDATE promo_codes SET audience = 'all' WHERE audience IS NULL"
+            )
+        )
+        await conn.execute(
+            text(
+                "UPDATE promo_codes SET uses_count = 0 WHERE uses_count IS NULL"
+            )
+        )
+        await conn.execute(
+            text(
                 "ALTER TABLE shipping_zones ADD COLUMN IF NOT EXISTS prepaid_rate DOUBLE PRECISION"
             )
         )
@@ -199,43 +222,6 @@ async def connect_db():
             )
         )
 
-        # Subcategories + product.subcategory_id
-        await conn.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS subcategories (
-                    id SERIAL PRIMARY KEY,
-                    category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-                    name VARCHAR(100) NOT NULL,
-                    slug VARCHAR(120) NOT NULL UNIQUE,
-                    description TEXT,
-                    image_url VARCHAR(500),
-                    is_active BOOLEAN DEFAULT TRUE,
-                    position INTEGER DEFAULT 0,
-                    created_at TIMESTAMPTZ DEFAULT NOW(),
-                    updated_at TIMESTAMPTZ DEFAULT NOW()
-                )
-                """
-            )
-        )
-        await conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_subcategories_category_id "
-                "ON subcategories(category_id)"
-            )
-        )
-        await conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_subcategories_slug ON subcategories(slug)"
-            )
-        )
-        await conn.execute(
-            text(
-                "ALTER TABLE products "
-                "ADD COLUMN IF NOT EXISTS subcategory_id INTEGER "
-                "REFERENCES subcategories(id) ON DELETE SET NULL"
-            )
-        )
         await conn.execute(
             text(
                 "ALTER TABLE products ADD COLUMN IF NOT EXISTS length_cm DOUBLE PRECISION"
@@ -276,39 +262,65 @@ async def connect_db():
                 "ALTER TABLE video_products ADD COLUMN IF NOT EXISTS height_cm DOUBLE PRECISION"
             )
         )
+        # One-time, deployment-safe cleanup for databases created by older releases.
+        # Preserve each product's parent category before removing the legacy schema.
         await conn.execute(
             text(
-                "CREATE INDEX IF NOT EXISTS ix_products_subcategory_id "
-                "ON products(subcategory_id)"
-            )
-        )
+                """
+                DO $$
+                BEGIN
+                    IF to_regclass('public.subcategories') IS NOT NULL
+                       AND EXISTS (
+                           SELECT 1
+                           FROM information_schema.columns
+                           WHERE table_schema = 'public'
+                             AND table_name = 'products'
+                             AND column_name = 'subcategory_id'
+                       )
+                    THEN
+                        EXECUTE '
+                            UPDATE products AS p
+                            SET category_id = s.category_id
+                            FROM subcategories AS s
+                            WHERE p.category_id IS NULL
+                              AND p.subcategory_id = s.id
+                        ';
+                    END IF;
 
-        # Many-to-many product ↔ subcategory
-        await conn.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS product_subcategories (
-                    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-                    subcategory_id INTEGER NOT NULL REFERENCES subcategories(id) ON DELETE CASCADE,
-                    PRIMARY KEY (product_id, subcategory_id)
-                )
+                    IF to_regclass('public.product_subcategories') IS NOT NULL
+                       AND to_regclass('public.subcategories') IS NOT NULL
+                    THEN
+                        EXECUTE '
+                            UPDATE products AS p
+                            SET category_id = mapped.category_id
+                            FROM (
+                                SELECT ps.product_id, MIN(s.category_id) AS category_id
+                                FROM product_subcategories AS ps
+                                JOIN subcategories AS s ON s.id = ps.subcategory_id
+                                GROUP BY ps.product_id
+                            ) AS mapped
+                            WHERE p.id = mapped.product_id
+                              AND p.category_id IS NULL
+                        ';
+                    END IF;
+                END
+                $$;
                 """
             )
         )
+        await conn.execute(text("DROP TABLE IF EXISTS product_subcategories"))
         await conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_product_subcategories_subcategory_id "
-                "ON product_subcategories(subcategory_id)"
-            )
+            text("ALTER TABLE products DROP COLUMN IF EXISTS subcategory_id")
         )
-        # Backfill from legacy products.subcategory_id
+        await conn.execute(text("DROP TABLE IF EXISTS subcategories"))
         await conn.execute(
             text(
                 """
-                INSERT INTO product_subcategories (product_id, subcategory_id)
-                SELECT id, subcategory_id FROM products
-                WHERE subcategory_id IS NOT NULL
-                ON CONFLICT DO NOTHING
+                UPDATE products AS p
+                SET category = c.name
+                FROM categories AS c
+                WHERE p.category_id = c.id
+                  AND p.category IS DISTINCT FROM c.name
                 """
             )
         )
@@ -321,84 +333,12 @@ async def connect_db():
 
     await seed_admin()
     await ensure_reels_category()
-    await _migrate_products_to_subcategories()
-    await _backfill_product_subcategories()
     print("PostgreSQL connected and tables ready")
 
 
 async def disconnect_db():
     await engine.dispose()
     print("PostgreSQL disconnected")
-
-
-async def _backfill_product_subcategories():
-    """Ensure product_subcategories has a row for every products.subcategory_id."""
-    from sqlalchemy import text
-
-    async with engine.begin() as conn:
-        await conn.execute(
-            text(
-                """
-                INSERT INTO product_subcategories (product_id, subcategory_id)
-                SELECT id, subcategory_id FROM products
-                WHERE subcategory_id IS NOT NULL
-                ON CONFLICT DO NOTHING
-                """
-            )
-        )
-
-
-async def _migrate_products_to_subcategories():
-    """Move products that only have category_id into a default subcategory."""
-    import re
-
-    from sqlalchemy import select
-
-    from app.models import Category, Product, SubCategory
-
-    def _slugify(name: str) -> str:
-        s = name.lower().strip()
-        s = re.sub(r"[^\w\s-]", "", s)
-        s = re.sub(r"[\s_-]+", "-", s)
-        return s
-
-    async with AsyncSessionLocal() as session:
-        cats = (await session.execute(select(Category))).scalars().all()
-        for cat in cats:
-            products = (
-                await session.execute(
-                    select(Product).where(
-                        Product.category_id == cat.id,
-                        Product.subcategory_id.is_(None),
-                    )
-                )
-            ).scalars().all()
-            if not products:
-                continue
-
-            default_slug = f"{cat.slug}-general"
-            existing_sub = (
-                await session.execute(
-                    select(SubCategory).where(SubCategory.slug == default_slug)
-                )
-            ).scalar_one_or_none()
-            if not existing_sub:
-                existing_sub = SubCategory(
-                    category_id=cat.id,
-                    name="General",
-                    slug=default_slug,
-                    description=f"Default subcategory for {cat.name}",
-                    is_active=True,
-                    position=0,
-                )
-                session.add(existing_sub)
-                await session.flush()
-
-            for p in products:
-                p.subcategory_id = existing_sub.id
-                p.category = f"{cat.name} / {existing_sub.name}"
-
-        await session.commit()
 
 
 async def seed_admin():
@@ -484,11 +424,12 @@ async def seed_default_categories():
         return s
 
     defaults = [
-        {"name": "Tawas", "position": 0},
-        {"name": "Kadhai", "position": 1},
-        {"name": "Skillets", "position": 2},
-        {"name": "Utensils", "position": 3},
-        {"name": "Cast Iron Sets", "position": 4},
+        {"name": "Chakla", "position": 0},
+        {"name": "Tawa", "position": 1},
+        {"name": "Belan / Rolling Pin", "position": 2},
+        {"name": "Serving Spoon", "position": 3},
+        {"name": "Spatula", "position": 4},
+        {"name": "Mortar and Pestle", "position": 5},
     ]
 
     async with AsyncSessionLocal() as session:

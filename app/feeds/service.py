@@ -15,7 +15,7 @@ from app.models import Product
 
 
 def _site_url() -> str:
-    return (settings.FRONTEND_URL or "https://mkharavad.com").rstrip("/")
+    return (settings.FRONTEND_URL or "https://chakladkho.com").rstrip("/")
 
 
 def _cdn_base() -> str:
