@@ -199,6 +199,7 @@ def serialize_shipment(shipment) -> dict:
         "tracking_url": shipment.tracking_url,
         "shiprocket_order_id": shipment.shiprocket_order_id,
         "shiprocket_shipment_id": shipment.shiprocket_shipment_id,
+        "shipmozo_reference_id": getattr(shipment, "shipmozo_reference_id", None),
         "created_at": shipment.created_at.isoformat() if shipment.created_at else None,
         "updated_at": shipment.updated_at.isoformat() if shipment.updated_at else None,
     }

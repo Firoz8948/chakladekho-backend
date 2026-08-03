@@ -60,6 +60,17 @@ class Settings(BaseSettings):
     SHIPROCKET_DEFAULT_BREADTH: float = 10
     SHIPROCKET_DEFAULT_HEIGHT: float = 10
 
+    # Shipmozo (manual push from Admin → Orders)
+    SHIPMOZO_BASE_URL: str = "https://shipping-api.com/app/api/v1"
+    SHIPMOZO_PUBLIC_KEY: str = ""
+    SHIPMOZO_PRIVATE_KEY: str = ""
+    # Required warehouse id from Shipmozo Get Warehouses / Create Warehouse
+    SHIPMOZO_WAREHOUSE_ID: str = ""
+    SHIPMOZO_AUTO_ASSIGN: bool = True
+    SHIPMOZO_DEFAULT_LENGTH: float = 10
+    SHIPMOZO_DEFAULT_BREADTH: float = 10
+    SHIPMOZO_DEFAULT_HEIGHT: float = 10
+
     # Media storage: "auto" uses BunnyCDN when configured, otherwise local disk
     STORAGE_BACKEND: str = "auto"
     # Local upload directory; relative paths resolve against the backend root

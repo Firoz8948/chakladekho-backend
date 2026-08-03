@@ -381,6 +381,7 @@ class Shipment(Base):
     tracking_url: Mapped[Optional[str]] = mapped_column(String(500))
     shiprocket_order_id: Mapped[Optional[str]] = mapped_column(String(100))
     shiprocket_shipment_id: Mapped[Optional[str]] = mapped_column(String(100))
+    shipmozo_reference_id: Mapped[Optional[str]] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

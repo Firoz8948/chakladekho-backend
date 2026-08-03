@@ -262,6 +262,12 @@ async def connect_db():
                 "ALTER TABLE video_products ADD COLUMN IF NOT EXISTS height_cm DOUBLE PRECISION"
             )
         )
+        await conn.execute(
+            text(
+                "ALTER TABLE shipments "
+                "ADD COLUMN IF NOT EXISTS shipmozo_reference_id VARCHAR(100)"
+            )
+        )
         # One-time, deployment-safe cleanup for databases created by older releases.
         # Preserve each product's parent category before removing the legacy schema.
         await conn.execute(

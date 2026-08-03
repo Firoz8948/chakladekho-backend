@@ -238,6 +238,16 @@ async def admin_push_order_shiprocket(
     )
 
 
+@router.post("/orders/{order_id}/shipmozo")
+async def admin_push_order_shipmozo(
+    order_id: str, _=Depends(get_current_admin)
+):
+    """Manually push an order to Shipmozo (push-order + optional auto-assign)."""
+    from app.shipping import shipmozo
+
+    return await shipmozo.push_order_to_shipmozo(order_id)
+
+
 @router.get("/orders/{order_id}/shipment")
 async def admin_get_order_shipment(
     order_id: str, _=Depends(get_current_admin)
