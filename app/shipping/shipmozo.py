@@ -20,16 +20,20 @@ logger = logging.getLogger("shipping.shipmozo")
 
 def shipmozo_configured() -> bool:
     return bool(
-        settings.SHIPMOZO_PUBLIC_KEY
-        and settings.SHIPMOZO_PRIVATE_KEY
-        and settings.SHIPMOZO_WAREHOUSE_ID
+        (settings.SHIPMOZO_PUBLIC_KEY or "").strip().strip("\"'")
+        and (settings.SHIPMOZO_PRIVATE_KEY or "").strip().strip("\"'")
+        and (settings.SHIPMOZO_WAREHOUSE_ID or "").strip().strip("\"'")
     )
+
+
+def _clean(value: str | None) -> str:
+    return (value or "").strip().strip("\"'")
 
 
 def _headers() -> dict[str, str]:
     return {
-        "public-key": settings.SHIPMOZO_PUBLIC_KEY,
-        "private-key": settings.SHIPMOZO_PRIVATE_KEY,
+        "public-key": _clean(settings.SHIPMOZO_PUBLIC_KEY),
+        "private-key": _clean(settings.SHIPMOZO_PRIVATE_KEY),
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
@@ -51,12 +55,49 @@ def _first(*values: Any) -> Any:
     return None
 
 
+def _error_detail(body: dict, resp: httpx.Response) -> str:
+    data = body.get("data")
+    nested_error = None
+    if isinstance(data, dict):
+        nested_error = data.get("error") or data.get("message")
+        if isinstance(nested_error, (list, dict)):
+            nested_error = str(nested_error)
+    detail = (
+        nested_error
+        or body.get("message")
+        or body.get("error")
+        or body.get("msg")
+        or (body.get("errors") and str(body.get("errors")))
+        or (data if isinstance(data, str) else None)
+        or (resp.text or "").strip()
+        or "Shipmozo request failed"
+    )
+    if isinstance(detail, (list, dict)):
+        detail = str(detail)
+    detail = str(detail).strip() or "Shipmozo request failed"
+    # Prefer nested validation text over generic "Error"
+    if detail.lower() == "error" and nested_error:
+        detail = str(nested_error).strip()
+    result = body.get("result")
+    if result is not None and str(result) not in detail:
+        return f"Shipmozo: {detail} (result={result})"
+    if not detail.lower().startswith("shipmozo"):
+        return f"Shipmozo: {detail}"
+    return detail
+
+
 async def _api(method: str, path: str, **kwargs) -> dict:
     if not shipmozo_configured():
-        raise HTTPException(status_code=503, detail="Shipmozo is not configured")
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Shipmozo is not configured. Set SHIPMOZO_PUBLIC_KEY, "
+                "SHIPMOZO_PRIVATE_KEY, and SHIPMOZO_WAREHOUSE_ID."
+            ),
+        )
 
-    base = (settings.SHIPMOZO_BASE_URL or "").rstrip("/")
-    async with httpx.AsyncClient(base_url=base, timeout=45) as client:
+    base = _clean(settings.SHIPMOZO_BASE_URL) or "https://shipping-api.com/app/api/v1"
+    async with httpx.AsyncClient(base_url=base.rstrip("/"), timeout=45) as client:
         resp = await client.request(method, path, headers=_headers(), **kwargs)
 
     body: dict = {}
@@ -69,6 +110,7 @@ async def _api(method: str, path: str, **kwargs) -> dict:
 
     result_flag = body.get("result")
     success = body.get("success")
+    # Shipmozo often returns HTTP 200 with result="0" on auth/validation errors
     failed = (
         resp.status_code >= 400
         or result_flag in (0, "0", False, "false")
@@ -82,17 +124,7 @@ async def _api(method: str, path: str, **kwargs) -> dict:
             resp.status_code,
             body,
         )
-        detail = (
-            body.get("message")
-            or body.get("error")
-            or body.get("msg")
-            or (body.get("errors") and str(body.get("errors")))
-            or resp.text
-            or "Shipmozo request failed"
-        )
-        if isinstance(detail, (list, dict)):
-            detail = str(detail)
-        raise HTTPException(status_code=502, detail=detail)
+        raise HTTPException(status_code=502, detail=_error_detail(body, resp))
 
     return body
 
@@ -135,20 +167,22 @@ def _build_push_payload(order: Order, weight_kg: float) -> dict:
             }
         )
 
+    pin = "".join(c for c in str(order.address_pincode or "") if c.isdigit())[:6]
     return {
         "order_id": order.order_id,
         "order_date": (order.created_at or utcnow()).strftime("%Y-%m-%d"),
         "order_amount": order_amount,
         "cod_amount": order_amount if is_cod else 0,
         "payment_type": payment_type,
-        "warehouse_id": str(settings.SHIPMOZO_WAREHOUSE_ID),
+        "warehouse_id": _clean(settings.SHIPMOZO_WAREHOUSE_ID),
         "consignee_name": (order.customer_name or "Customer")[:100],
         "consignee_company_name": "",
         "consignee_address_line_one": (address or order.address_city or "Address")[:190],
         "consignee_address_line_two": (order.address_line2 or landmark or "")[:190],
         "consignee_city": order.address_city or "",
         "consignee_state": order.address_state or "",
-        "consignee_pincode": str(order.address_pincode or ""),
+        # Shipmozo validation expects consignee_pin_code (not consignee_pincode)
+        "consignee_pin_code": pin,
         "consignee_phone": phone,
         "consignee_email": order.customer_email
         or f"order-{order.order_id.lower()}@chakladkho.com",
