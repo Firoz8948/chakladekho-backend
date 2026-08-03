@@ -206,7 +206,6 @@ def _build_push_payload(order: Order, weight_kg: float) -> dict:
         "order_type": "ESSENTIALS",
         "consignee_name": name,
         "consignee_phone": phone,
-        "consignee_alternate_phone": phone,
         "consignee_email": email,
         "consignee_address_line_one": line1,
         "consignee_address_line_two": line2,
