@@ -60,12 +60,25 @@ def _norm_state(value: str | None) -> str:
 
 
 def lookup_state_from_pincode(pincode: str) -> str | None:
+    result = lookup_pincode_details(pincode)
+    return (result or {}).get("state")
+
+
+def lookup_pincode_details(pincode: str) -> dict | None:
+    """Resolve city/state for an Indian pincode via postalpincode.in (server-side)."""
     pin = "".join(c for c in str(pincode or "") if c.isdigit())
     if len(pin) != 6:
         return None
     try:
         url = f"https://api.postalpincode.in/pincode/{pin}"
-        with urllib.request.urlopen(url, timeout=8) as resp:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "ChaklaDekho/1.0",
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode())
         entry = data[0] if isinstance(data, list) and data else None
         if not entry or entry.get("Status") != "Success":
@@ -73,7 +86,16 @@ def lookup_state_from_pincode(pincode: str) -> str | None:
         offices = entry.get("PostOffice") or []
         if not offices:
             return None
-        return offices[0].get("State") or None
+        office = offices[0]
+        return {
+            "pincode": pin,
+            "city": office.get("District")
+            or office.get("Block")
+            or office.get("Name")
+            or "",
+            "state": office.get("State") or "",
+            "post_office": office.get("Name") or "",
+        }
     except Exception:
         return None
 

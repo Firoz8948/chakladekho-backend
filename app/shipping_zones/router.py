@@ -56,6 +56,15 @@ async def delete_zone(
     return {"message": "Shipping zone deleted"}
 
 
+@router.get("/pincode/{pincode}")
+async def lookup_pincode(pincode: str):
+    """Public pincode → city/state lookup (proxied server-side to avoid CORS)."""
+    details = service.lookup_pincode_details(pincode)
+    if not details:
+        raise HTTPException(status_code=404, detail="Pincode not found")
+    return details
+
+
 @router.post("/quote")
 async def quote_shipping(
     body: ShippingQuoteRequest,
