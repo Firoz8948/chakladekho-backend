@@ -168,6 +168,22 @@ def _build_push_payload(order: Order, weight_kg: float) -> dict:
         )
 
     pin = "".join(c for c in str(order.address_pincode or "") if c.isdigit())[:6]
+    if len(pin) != 6:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Order {order.order_id} has no valid 6-digit pincode "
+                f"(got {order.address_pincode!r}). Update the order address first."
+            ),
+        )
+
+    line1 = (order.address_line1 or address or order.address_city or "Address")[:190]
+    line2 = (order.address_line2 or landmark or "")[:190]
+    name = (order.customer_name or "Customer")[:100]
+    city = order.address_city or ""
+    state = order.address_state or ""
+    email = order.customer_email or f"order-{order.order_id.lower()}@chakladkho.com"
+
     return {
         "order_id": order.order_id,
         "order_date": (order.created_at or utcnow()).strftime("%Y-%m-%d"),
@@ -175,22 +191,33 @@ def _build_push_payload(order: Order, weight_kg: float) -> dict:
         "cod_amount": order_amount if is_cod else 0,
         "payment_type": payment_type,
         "warehouse_id": _clean(settings.SHIPMOZO_WAREHOUSE_ID),
-        "consignee_name": (order.customer_name or "Customer")[:100],
+        "consignee_name": name,
         "consignee_company_name": "",
-        "consignee_address_line_one": (address or order.address_city or "Address")[:190],
-        "consignee_address_line_two": (order.address_line2 or landmark or "")[:190],
-        "consignee_city": order.address_city or "",
-        "consignee_state": order.address_state or "",
-        # Shipmozo validation expects consignee_pin_code (not consignee_pincode)
+        "consignee_address_line_one": line1,
+        "consignee_address_line_two": line2,
+        "consignee_city": city,
+        "consignee_state": state,
+        # Shipmozo Laravel rule: consignee_pin_code
         "consignee_pin_code": pin,
         "consignee_phone": phone,
-        "consignee_email": order.customer_email
-        or f"order-{order.order_id.lower()}@chakladkho.com",
+        "consignee_email": email,
         "weight": weight_grams,
         "length": int(round(length)) or 10,
         "width": int(round(breadth)) or 10,
         "height": int(round(height)) or 10,
         "product_detail": products,
+        # Nested form some Shipmozo docs also accept
+        "consignee": {
+            "name": name,
+            "company_name": "",
+            "address_line_one": line1,
+            "address_line_two": line2,
+            "city": city,
+            "state": state,
+            "pin_code": pin,
+            "phone": phone,
+            "email": email,
+        },
     }
 
 
@@ -261,10 +288,12 @@ async def push_order_to_shipmozo(order_id: str) -> dict:
             weight_kg = await sr._order_weight_kg(order)
             payload = _build_push_payload(order, weight_kg)
             logger.info(
-                "Shipmozo push payload for %s warehouse=%s pincode=%s",
+                "Shipmozo push payload for %s warehouse=%s pin=%s phone=%s city=%s",
                 order.order_id,
                 payload.get("warehouse_id"),
-                payload.get("consignee_pincode"),
+                payload.get("consignee_pin_code"),
+                payload.get("consignee_phone"),
+                payload.get("consignee_city"),
             )
 
             push_result = await _api("POST", "/push-order", json=payload)
