@@ -145,16 +145,44 @@ def _dims_cm(order: Order) -> tuple[float, float, float]:
 
 
 def _build_push_payload(order: Order, weight_kg: float) -> dict:
+    """Build Shipmozo push-order body per official API docs."""
     length, breadth, height = _dims_cm(order)
     weight_grams = max(int(round(float(weight_kg) * 1000)), 500)
-    phone = "".join(c for c in (order.customer_phone or "") if c.isdigit())[-10:]
-    address = order.address_line1 or ""
-    if order.address_line2:
-        address = f"{address}, {order.address_line2}".strip(", ")
+    phone_digits = "".join(c for c in (order.customer_phone or "") if c.isdigit())[-10:]
+    if len(phone_digits) != 10:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order {order.order_id} needs a valid 10-digit phone for Shipmozo.",
+        )
+    phone = int(phone_digits)
+
     landmark = getattr(order, "address_landmark", None)
     is_cod = (order.payment_method or "").lower() == "cod"
-    payment_type = "COD" if is_cod else "Prepaid"
+    payment_type = "COD" if is_cod else "PREPAID"
     order_amount = float(order.total or order.subtotal or 0)
+
+    pin_digits = "".join(c for c in str(order.address_pincode or "") if c.isdigit())[:6]
+    if len(pin_digits) != 6:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Order {order.order_id} has no valid 6-digit pincode "
+                f"(got {order.address_pincode!r}). Update the order address first."
+            ),
+        )
+    pin = int(pin_digits)
+
+    line1 = (order.address_line1 or order.address_city or "Address")[:190]
+    line2 = (order.address_line2 or landmark or "")[:190]
+    name = (order.customer_name or "Customer")[:100]
+    city = order.address_city or ""
+    state = order.address_state or ""
+    if not city or not state:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order {order.order_id} is missing city/state for Shipmozo.",
+        )
+    email = order.customer_email or f"order-{order.order_id.lower()}@chakladkho.com"
 
     products = []
     for item in order.items or []:
@@ -163,61 +191,38 @@ def _build_push_payload(order: Order, weight_kg: float) -> dict:
                 "name": (item.name or "Item")[:200],
                 "sku_number": str(item.product_id or item.id),
                 "quantity": int(item.quantity),
+                "discount": "",
+                "hsn": "",
                 "unit_price": float(item.price),
+                "product_category": "Other",
             }
         )
-
-    pin = "".join(c for c in str(order.address_pincode or "") if c.isdigit())[:6]
-    if len(pin) != 6:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Order {order.order_id} has no valid 6-digit pincode "
-                f"(got {order.address_pincode!r}). Update the order address first."
-            ),
-        )
-
-    line1 = (order.address_line1 or address or order.address_city or "Address")[:190]
-    line2 = (order.address_line2 or landmark or "")[:190]
-    name = (order.customer_name or "Customer")[:100]
-    city = order.address_city or ""
-    state = order.address_state or ""
-    email = order.customer_email or f"order-{order.order_id.lower()}@chakladkho.com"
+    if not products:
+        raise HTTPException(status_code=400, detail="Order has no items")
 
     return {
         "order_id": order.order_id,
         "order_date": (order.created_at or utcnow()).strftime("%Y-%m-%d"),
-        "order_amount": order_amount,
-        "cod_amount": order_amount if is_cod else 0,
-        "payment_type": payment_type,
-        "warehouse_id": _clean(settings.SHIPMOZO_WAREHOUSE_ID),
+        "order_type": "ESSENTIALS",
         "consignee_name": name,
-        "consignee_company_name": "",
+        "consignee_phone": phone,
+        "consignee_alternate_phone": phone,
+        "consignee_email": email,
         "consignee_address_line_one": line1,
         "consignee_address_line_two": line2,
+        "consignee_pin_code": pin,
         "consignee_city": city,
         "consignee_state": state,
-        # Shipmozo Laravel rule: consignee_pin_code
-        "consignee_pin_code": pin,
-        "consignee_phone": phone,
-        "consignee_email": email,
+        "product_detail": products,
+        "payment_type": payment_type,
+        "cod_amount": str(int(round(order_amount))) if is_cod else "",
         "weight": weight_grams,
         "length": int(round(length)) or 10,
         "width": int(round(breadth)) or 10,
         "height": int(round(height)) or 10,
-        "product_detail": products,
-        # Nested form some Shipmozo docs also accept
-        "consignee": {
-            "name": name,
-            "company_name": "",
-            "address_line_one": line1,
-            "address_line_two": line2,
-            "city": city,
-            "state": state,
-            "pin_code": pin,
-            "phone": phone,
-            "email": email,
-        },
+        "warehouse_id": _clean(settings.SHIPMOZO_WAREHOUSE_ID),
+        "gst_ewaybill_number": "",
+        "gstin_number": "",
     }
 
 
@@ -246,8 +251,11 @@ def _extract_awb_courier(api_result: dict) -> tuple[str | None, str | None]:
     courier = _first(
         api_result.get("courier"),
         api_result.get("courier_name"),
+        api_result.get("courier_company"),
         data.get("courier") if isinstance(data, dict) else None,
         data.get("courier_name") if isinstance(data, dict) else None,
+        data.get("courier_company") if isinstance(data, dict) else None,
+        data.get("courier_company_service") if isinstance(data, dict) else None,
     )
     return (
         str(awb) if awb is not None else None,
@@ -256,7 +264,12 @@ def _extract_awb_courier(api_result: dict) -> tuple[str | None, str | None]:
 
 
 async def push_order_to_shipmozo(order_id: str) -> dict:
-    """Push order to Shipmozo, then auto-assign courier when enabled."""
+    """Push order to Shipmozo, then auto-assign courier when enabled.
+
+    Flow per Shipmozo docs:
+      POST /push-order  → save reference_id
+      POST /auto-assign-order  { order_id }  → AWB + courier (if panel auto-assign is set)
+    """
     if not shipmozo_configured():
         raise HTTPException(
             status_code=503,
@@ -301,28 +314,13 @@ async def push_order_to_shipmozo(order_id: str) -> dict:
                 "Shipmozo push response for %s: %s", order.order_id, push_result
             )
 
-            reference_id = _extract_reference_id(push_result)
-            if not reference_id:
-                message = (
-                    push_result.get("message")
-                    or push_result.get("error")
-                    or "Shipmozo did not return a reference_id. Check warehouse_id and keys."
-                )
-                if not existing:
-                    existing = Shipment(order_db_id=order.id, order_id=order.order_id)
-                    db.add(existing)
-                    await db.flush()
-                existing.status = "failed"
-                existing.updated_at = utcnow()
-                await db.commit()
-                raise HTTPException(status_code=502, detail=str(message))
-
+            reference_id = _extract_reference_id(push_result) or order.order_id
             if not existing:
                 existing = Shipment(order_db_id=order.id, order_id=order.order_id)
                 db.add(existing)
                 await db.flush()
 
-            existing.shipmozo_reference_id = reference_id
+            existing.shipmozo_reference_id = str(reference_id)
             existing.status = "created"
             existing.updated_at = utcnow()
             awb, courier = _extract_awb_courier(push_result)
@@ -333,14 +331,13 @@ async def push_order_to_shipmozo(order_id: str) -> dict:
                 await db.flush()
             awb, courier = existing.awb_code, existing.courier_name
 
+        # Docs: auto-assign body is only { "order_id": "<website order id>" }
         if settings.SHIPMOZO_AUTO_ASSIGN and not awb:
             try:
-                assign_body = {
-                    "order_id": order.order_id,
-                    "reference_id": reference_id,
-                }
                 assign_result = await _api(
-                    "POST", "/auto-assign-order", json=assign_body
+                    "POST",
+                    "/auto-assign-order",
+                    json={"order_id": order.order_id},
                 )
                 logger.info(
                     "Shipmozo auto-assign for %s: %s", order.order_id, assign_result
@@ -358,18 +355,21 @@ async def push_order_to_shipmozo(order_id: str) -> dict:
                 )
 
         if awb:
-            existing.awb_code = awb
+            existing.awb_code = str(awb)
             if (
                 not existing.tracking_url
                 or "shiprocket" in (existing.tracking_url or "").lower()
             ):
-                existing.tracking_url = f"https://shipmozo.com/tracking?awb={awb}"
+                existing.tracking_url = (
+                    f"https://shipping-api.com/app/api/v1/track-order"
+                    f"?awb_number={awb}"
+                )
             if not existing.status or existing.status == "created":
                 existing.status = "awb_assigned"
         if courier:
-            existing.courier_name = courier
+            existing.courier_name = str(courier)
 
-        existing.shipmozo_reference_id = reference_id
+        existing.shipmozo_reference_id = str(reference_id)
         existing.updated_at = utcnow()
         await db.commit()
         await db.refresh(existing)
