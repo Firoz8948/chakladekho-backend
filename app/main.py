@@ -122,6 +122,7 @@ async def public_video_products():
                 "unit": vp.unit,
                 "video_url": vp.video_url,
                 "images": list(vp.images or []),
+                "metafields": {},
                 "weight": vp.weight,
                 "length_cm": vp.length_cm,
                 "breadth_cm": vp.breadth_cm,
@@ -157,6 +158,7 @@ async def public_video_products():
                         "stock": stock if stock is not None else row["stock"],
                         "unit": pdata.get("unit") or row["unit"],
                         "images": pdata.get("images") or row["images"],
+                        "metafields": pdata.get("metafields") or {},
                         "weight": pdata.get("weight")
                         if pdata.get("weight") is not None
                         else row["weight"],
