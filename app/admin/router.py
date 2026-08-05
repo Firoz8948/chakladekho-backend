@@ -92,6 +92,18 @@ async def create_product(
     return await service.create_product(db, body.model_dump())
 
 
+@router.post("/products/{product_id}/duplicate", status_code=201)
+async def duplicate_product(
+    product_id: int,
+    _=Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    duplicated = await service.duplicate_product(db, product_id)
+    if not duplicated:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return duplicated
+
+
 @router.put("/products/{product_id}")
 async def update_product(
     product_id: int,

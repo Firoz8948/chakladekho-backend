@@ -249,6 +249,81 @@ async def create_product(db: AsyncSession, data: dict) -> dict:
     return await get_product_by_id(db, product.id)
 
 
+async def duplicate_product(db: AsyncSession, product_id: int) -> dict | None:
+    """Clone a product with variants + images. Name becomes '(Copy) <original>'."""
+    result = await db.execute(
+        select(Product)
+        .options(
+            selectinload(Product.images),
+            selectinload(Product.variants).selectinload(ProductVariant.options),
+        )
+        .where(Product.id == product_id)
+    )
+    source = result.scalar_one_or_none()
+    if not source:
+        return None
+
+    name = f"(Copy) {source.name}"
+    slug = slugify(name)
+    existing = (
+        await db.execute(select(Product).where(Product.slug == slug))
+    ).scalar_one_or_none()
+    if existing:
+        slug = f"{slug}-{int(datetime.utcnow().timestamp())}"
+
+    clone = Product(
+        name=name,
+        slug=slug,
+        description=source.description,
+        price=source.price,
+        mrp=source.mrp,
+        category_id=source.category_id,
+        category=source.category,
+        stock=source.stock,
+        unit=source.unit,
+        weight=source.weight,
+        length_cm=getattr(source, "length_cm", None),
+        breadth_cm=getattr(source, "breadth_cm", None),
+        height_cm=getattr(source, "height_cm", None),
+        is_featured=False,
+        is_active=False,
+        tags=list(source.tags or []),
+        metafields=dict(source.metafields or {}),
+        seo_title=getattr(source, "seo_title", None) or "",
+        seo_description=getattr(source, "seo_description", None) or "",
+    )
+    db.add(clone)
+    await db.flush()
+
+    for img in source.images or []:
+        db.add(
+            ProductImage(
+                product_id=clone.id,
+                url=img.url,
+                position=img.position,
+            )
+        )
+
+    for var in source.variants or []:
+        new_var = ProductVariant(product_id=clone.id, name=var.name)
+        db.add(new_var)
+        await db.flush()
+        for opt in var.options or []:
+            db.add(
+                ProductVariantOption(
+                    variant_id=new_var.id,
+                    name=opt.name,
+                    price=opt.price,
+                    mrp=opt.mrp,
+                    stock=opt.stock,
+                    weight=getattr(opt, "weight", None),
+                )
+            )
+
+    await db.commit()
+    return await get_product_by_id(db, clone.id)
+
+
 async def update_product(db: AsyncSession, product_id: int, data: dict) -> dict | None:
     from app.categories import service as category_service
 
