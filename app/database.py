@@ -268,6 +268,28 @@ async def connect_db():
                 "ADD COLUMN IF NOT EXISTS shipmozo_reference_id VARCHAR(100)"
             )
         )
+        await conn.execute(
+            text(
+                "ALTER TABLE products ADD COLUMN IF NOT EXISTS seo_title VARCHAR(200)"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE products "
+                "ADD COLUMN IF NOT EXISTS seo_description VARCHAR(320)"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE categories ADD COLUMN IF NOT EXISTS seo_title VARCHAR(200)"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE categories "
+                "ADD COLUMN IF NOT EXISTS seo_description VARCHAR(320)"
+            )
+        )
         # One-time, deployment-safe cleanup for databases created by older releases.
         # Preserve each product's parent category before removing the legacy schema.
         await conn.execute(

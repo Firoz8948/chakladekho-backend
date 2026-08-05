@@ -37,6 +37,8 @@ def serialize_category(category: Category, product_count: int = 0) -> dict:
         "slug": category.slug,
         "description": category.description,
         "image_url": category.image_url,
+        "seo_title": getattr(category, "seo_title", None) or "",
+        "seo_description": getattr(category, "seo_description", None) or "",
         "is_active": category.is_active,
         "position": category.position,
         "is_reels": bool(category.is_reels),

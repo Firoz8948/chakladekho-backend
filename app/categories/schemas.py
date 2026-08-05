@@ -6,6 +6,8 @@ from datetime import datetime
 class CategoryCreateRequest(BaseModel):
     name: str
     description: Optional[str] = ""
+    seo_title: Optional[str] = ""
+    seo_description: Optional[str] = ""
     is_active: bool = True
     position: int = 0
 
@@ -13,6 +15,8 @@ class CategoryCreateRequest(BaseModel):
 class CategoryUpdateRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
     is_active: Optional[bool] = None
     position: Optional[int] = None
 
@@ -23,6 +27,8 @@ class CategoryResponse(BaseModel):
     slug: str
     description: Optional[str]
     image_url: Optional[str]
+    seo_title: Optional[str] = ""
+    seo_description: Optional[str] = ""
     is_active: bool
     position: int
     is_reels: bool = False

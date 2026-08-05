@@ -51,11 +51,16 @@ class ProductCreateRequest(BaseModel):
     stock: int = 0
     unit: Optional[str] = "grams"
     weight: Optional[float] = None
+    length_cm: Optional[float] = None
+    breadth_cm: Optional[float] = None
+    height_cm: Optional[float] = None
     is_featured: bool = False
     is_active: bool = True
     variants: Optional[list[ProductVariant]] = []
     tags: Optional[list[str]] = []
     metafields: Optional[dict[str, str]] = {}
+    seo_title: Optional[str] = ""
+    seo_description: Optional[str] = ""
 
 
 class ProductUpdateRequest(BaseModel):
@@ -68,11 +73,16 @@ class ProductUpdateRequest(BaseModel):
     stock: Optional[int] = None
     unit: Optional[str] = None
     weight: Optional[float] = None
+    length_cm: Optional[float] = None
+    breadth_cm: Optional[float] = None
+    height_cm: Optional[float] = None
     is_featured: Optional[bool] = None
     is_active: Optional[bool] = None
     variants: Optional[list[ProductVariant]] = None
     tags: Optional[list[str]] = None
     metafields: Optional[dict[str, str]] = None
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
 
 
 class ProductResponse(BaseModel):
@@ -92,6 +102,8 @@ class ProductResponse(BaseModel):
     variants: Optional[list[ProductVariant]] = []
     tags: Optional[list[str]] = []
     metafields: Optional[dict[str, str]] = {}
+    seo_title: Optional[str] = ""
+    seo_description: Optional[str] = ""
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 

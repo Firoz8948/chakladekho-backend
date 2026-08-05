@@ -100,6 +100,8 @@ class Category(Base):
     slug: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text)
     image_url: Mapped[Optional[str]] = mapped_column(String(500))
+    seo_title: Mapped[Optional[str]] = mapped_column(String(200))
+    seo_description: Mapped[Optional[str]] = mapped_column(String(320))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     is_reels: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -140,6 +142,8 @@ class Product(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     tags: Mapped[Optional[list]] = mapped_column(JSON, default=list)
     metafields: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
+    seo_title: Mapped[Optional[str]] = mapped_column(String(200))
+    seo_description: Mapped[Optional[str]] = mapped_column(String(320))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
