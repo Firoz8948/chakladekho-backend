@@ -15,7 +15,7 @@ from app.models import Product
 
 
 def _site_url() -> str:
-    return (settings.FRONTEND_URL or "https://chakladkho.com").rstrip("/")
+    return (settings.FRONTEND_URL or "https://www.chakladekho.com").rstrip("/")
 
 
 def _cdn_base() -> str:
@@ -103,12 +103,12 @@ def build_facebook_rss(products: list[Product]) -> str:
         if not row["image_link"] or not row["title"]:
             continue
         extra_xml = "".join(
-            f"<additional_image_link>{escape(u)}</additional_image_link>"
+            f"<g:additional_image_link>{escape(u)}</g:additional_image_link>"
             for u in row["additional_image_link"]
             if u
         )
         sale = (
-            f"<sale_price>{escape(row['sale_price'])}</sale_price>"
+            f"<g:sale_price>{escape(row['sale_price'])}</g:sale_price>"
             if row.get("sale_price")
             else ""
         )
@@ -126,6 +126,7 @@ def build_facebook_rss(products: list[Product]) -> str:
       <g:image_link>{escape(row['image_link'])}</g:image_link>
       {extra_xml}
       <g:brand>{escape(row['brand'])}</g:brand>
+      <g:identifier_exists>false</g:identifier_exists>
       <g:product_type>{escape(row['product_type'])}</g:product_type>
       <g:google_product_category>{escape(row['google_product_category'])}</g:google_product_category>
     </item>"""
