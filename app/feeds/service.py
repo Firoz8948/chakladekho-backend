@@ -15,7 +15,12 @@ from app.models import Product
 
 
 def _site_url() -> str:
-    return (settings.FRONTEND_URL or "https://www.chakladekho.com").rstrip("/")
+    """Canonical storefront URL for feed product links (must match Merchant claimed URL)."""
+    url = (settings.FRONTEND_URL or "https://www.chakladekho.com").rstrip("/")
+    # Prefer www — Merchant Center is claimed as https://www.chakladekho.com
+    if url in {"https://chakladekho.com", "http://chakladekho.com"}:
+        return "https://www.chakladekho.com"
+    return url
 
 
 def _cdn_base() -> str:
