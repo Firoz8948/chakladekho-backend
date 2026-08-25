@@ -5,6 +5,7 @@ import logging
 import uuid
 
 from fastapi import HTTPException
+from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 
 from app.common import serialize_payment, utcnow
@@ -13,6 +14,7 @@ from app.database import AsyncSessionLocal
 from app.models import Order, Payment
 from app.orders import service as order_service
 from app.orders.models import calc_subtotal, normalize_items, total_cart_weight_grams
+from app.payments import payu as payu_lib
 from app.promocodes import service as promo_service
 
 logger = logging.getLogger("payments")
@@ -20,6 +22,19 @@ logger = logging.getLogger("payments")
 
 def razorpay_configured() -> bool:
     return bool(settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET)
+
+
+def payu_configured() -> bool:
+    return payu_lib.payu_configured()
+
+
+def online_provider() -> str | None:
+    """Preferred online gateway: PayU first, then Razorpay."""
+    if payu_configured():
+        return "payu"
+    if razorpay_configured():
+        return "razorpay"
+    return None
 
 
 def _client():
@@ -36,11 +51,28 @@ def _client():
 
 
 def get_public_config() -> dict:
+    provider = online_provider()
     return {
-        "configured": razorpay_configured(),
-        "key_id": settings.RAZORPAY_KEY_ID if razorpay_configured() else None,
+        "configured": provider is not None,
+        "provider": provider,
+        "key_id": settings.RAZORPAY_KEY_ID if provider == "razorpay" else None,
+        "payu_mode": settings.PAYU_MODE if provider == "payu" else None,
         "currency": "INR",
     }
+
+
+def _api_public_base() -> str:
+    """Absolute API origin used for PayU surl/furl callbacks."""
+    base = (settings.API_PUBLIC_URL or "").rstrip("/")
+    if base:
+        return base
+    if settings.ENVIRONMENT.lower() in {"production", "prod"}:
+        return "https://api.chakladekho.com/api/v1"
+    return f"http://localhost:8000{settings.API_V1_PREFIX}"
+
+
+def _frontend_base() -> str:
+    return (settings.FRONTEND_URL or "https://www.chakladekho.com").rstrip("/")
 
 
 async def _build_checkout(
@@ -90,6 +122,16 @@ async def _build_checkout(
     }
 
 
+def _customer_email(customer: dict) -> str:
+    email = (customer.get("email") or "").strip()
+    if email:
+        return email
+    phone = "".join(ch for ch in str(customer.get("mobile") or "") if ch.isdigit())
+    if phone:
+        return f"{phone}@orders.chakladekho.com"
+    return "orders@chakladekho.com"
+
+
 async def create_payment_order(
     customer: dict,
     address: dict,
@@ -103,22 +145,112 @@ async def create_payment_order(
     if not items:
         raise HTTPException(status_code=400, detail="Cart is empty")
 
+    provider = online_provider()
+    if not provider:
+        raise HTTPException(
+            status_code=503,
+            detail="Online payment is not configured. Set PAYU_KEY/PAYU_SALT (or Razorpay keys).",
+        )
+
     checkout = await _build_checkout(
         customer, address, items, promo_code=promo_code, user_id=user_id
     )
     checkout["user_id"] = user_id
+    checkout["payment_method"] = provider
     if meta_event_id:
         checkout["meta_event_id"] = meta_event_id
     if meta_fbp:
         checkout["meta_fbp"] = meta_fbp
     if meta_fbc:
         checkout["meta_fbc"] = meta_fbc
-    amount_paise = int(round(checkout["total"] * 100))
-    if amount_paise < 100:
+
+    if checkout["total"] < 1:
         raise HTTPException(
             status_code=400, detail="Order total must be at least ₹1.00"
         )
 
+    if provider == "payu":
+        return await _create_payu_order(checkout, customer, user_id)
+    return await _create_razorpay_order(checkout, customer, user_id)
+
+
+async def _create_payu_order(checkout: dict, customer: dict, user_id: int | None) -> dict:
+    txnid = f"cd{uuid.uuid4().hex[:20]}"
+    amount = payu_lib.format_amount(checkout["total"])
+    firstname = (customer.get("name") or "Customer")[:60]
+    email = _customer_email(customer)
+    phone = "".join(ch for ch in str(customer.get("mobile") or "") if ch.isdigit())[-10:]
+    productinfo = "ChaklaDekho Order"
+    udf1 = str(user_id or "")
+    key = settings.PAYU_KEY
+    salt = settings.PAYU_SALT
+    hash_value = payu_lib.request_hash(
+        key=key,
+        txnid=txnid,
+        amount=amount,
+        productinfo=productinfo,
+        firstname=firstname,
+        email=email,
+        salt=salt,
+        udf1=udf1,
+    )
+
+    api_base = _api_public_base()
+    surl = f"{api_base}/payments/payu/success"
+    furl = f"{api_base}/payments/payu/failure"
+
+    async with AsyncSessionLocal() as db:
+        payment = Payment(
+            amount=checkout["total"],
+            currency="INR",
+            razorpay_order_id=txnid,  # stores PayU txnid
+            status="created",
+            checkout_snapshot=checkout,
+        )
+        db.add(payment)
+        await db.commit()
+        await db.refresh(payment)
+        logger.info(
+            "PayU txn created %s amount=%s payment_row=%s mode=%s",
+            txnid,
+            checkout["total"],
+            payment.id,
+            settings.PAYU_MODE,
+        )
+
+    fields = {
+        "key": key,
+        "txnid": txnid,
+        "amount": amount,
+        "productinfo": productinfo,
+        "firstname": firstname,
+        "email": email,
+        "phone": phone,
+        "surl": surl,
+        "furl": furl,
+        "hash": hash_value,
+        "service_provider": "payu_paisa",
+        "udf1": udf1,
+        "udf2": "",
+        "udf3": "",
+        "udf4": "",
+        "udf5": "",
+    }
+
+    return {
+        "provider": "payu",
+        "payment_id": str(payment.id),
+        "amount": float(checkout["total"]),
+        "currency": "INR",
+        "payment_url": payu_lib.payment_url(),
+        "payu": fields,
+    }
+
+
+async def _create_razorpay_order(
+    checkout: dict, customer: dict, user_id: int | None
+) -> dict:
+    amount_paise = int(round(checkout["total"] * 100))
     receipt = f"rcpt_{uuid.uuid4().hex[:12]}"
     client = _client()
 
@@ -161,6 +293,7 @@ async def create_payment_order(
         )
 
     return {
+        "provider": "razorpay",
         "razorpay_order_id": rzp_order["id"],
         "amount": amount_paise,
         "currency": "INR",
@@ -178,7 +311,7 @@ def _verify_signature(
     generated = hmac.new(
         settings.RAZORPAY_KEY_SECRET.encode(), message, hashlib.sha256
     ).hexdigest()
-    return hmac.compare_digest(generated, signature or "")
+    return hmac.compare_digest(generated, signature)
 
 
 def _fetch_razorpay_payment(razorpay_payment_id: str) -> dict:
@@ -195,16 +328,13 @@ def _fetch_razorpay_payment(razorpay_payment_id: str) -> dict:
 def _assert_payment_amount(rzp_payment: dict, expected_rupees: float) -> None:
     paid_paise = int(rzp_payment.get("amount") or 0)
     expected_paise = int(round(float(expected_rupees) * 100))
-    if paid_paise != expected_paise:
+    if abs(paid_paise - expected_paise) > 1:
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"Payment amount mismatch: paid {paid_paise} paise, "
-                f"expected {expected_paise} paise"
-            ),
+            detail=f"Paid amount mismatch (expected {expected_paise} paise, got {paid_paise})",
         )
     status = (rzp_payment.get("status") or "").lower()
-    if status not in ("captured", "authorized"):
+    if status not in {"captured", "authorized"}:
         raise HTTPException(
             status_code=400,
             detail=f"Payment not successful on Razorpay (status={status or 'unknown'})",
@@ -213,10 +343,11 @@ def _assert_payment_amount(rzp_payment: dict, expected_rupees: float) -> None:
 
 async def _fulfill_paid_payment(
     payment: Payment,
-    razorpay_payment_id: str,
-    razorpay_order_id: str,
+    gateway_payment_id: str,
+    gateway_order_id: str,
     user_id: int | None,
     db,
+    payment_method: str | None = None,
 ) -> dict:
     """Create store order from snapshot if not already done. Idempotent."""
     if payment.order_db_id:
@@ -231,15 +362,22 @@ async def _fulfill_paid_payment(
     if not checkout:
         raise HTTPException(status_code=400, detail="Checkout data missing")
 
+    method = (
+        payment_method
+        or (checkout.get("payment_method") if checkout else None)
+        or "razorpay"
+    )
+
     order = await order_service.create_order_from_checkout(
         checkout,
-        razorpay_payment_id,
-        razorpay_order_id,
+        gateway_payment_id,
+        gateway_order_id,
         user_id=user_id or checkout.get("user_id"),
+        payment_method=method,
     )
 
     payment.order_db_id = int(order["id"])
-    payment.razorpay_payment_id = razorpay_payment_id
+    payment.razorpay_payment_id = gateway_payment_id
     payment.status = "paid"
     payment.updated_at = utcnow()
     await db.commit()
@@ -252,9 +390,11 @@ async def _fulfill_paid_payment(
 
 
 async def verify_payment(payload: dict, user_id: int | None = None) -> dict:
-    razorpay_order_id = payload["razorpay_order_id"]
-    razorpay_payment_id = payload["razorpay_payment_id"]
-    signature = payload["razorpay_signature"]
+    razorpay_order_id = payload.get("razorpay_order_id")
+    razorpay_payment_id = payload.get("razorpay_payment_id")
+    signature = payload.get("razorpay_signature")
+    if not (razorpay_order_id and razorpay_payment_id and signature):
+        raise HTTPException(status_code=400, detail="Missing Razorpay verify fields")
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(
@@ -278,7 +418,6 @@ async def verify_payment(payload: dict, user_id: int | None = None) -> dict:
         if payment.status == "refunded":
             raise HTTPException(status_code=400, detail="Payment was refunded")
 
-        # Merge Meta cookies/event id from verify payload into checkout snapshot
         snap = dict(payment.checkout_snapshot or {})
         if payload.get("meta_event_id"):
             snap["meta_event_id"] = payload["meta_event_id"]
@@ -297,13 +436,120 @@ async def verify_payment(payload: dict, user_id: int | None = None) -> dict:
             razorpay_order_id,
             user_id,
             db,
+            payment_method="razorpay",
+        )
+
+
+async def handle_payu_callback(form: dict, *, success_path: bool) -> RedirectResponse:
+    """
+    PayU POSTs browser redirect here. Verify reverse hash, fulfill order, redirect
+    to the storefront.
+    """
+    txnid = str(form.get("txnid") or "")
+    status = str(form.get("status") or "").lower()
+    mihpayid = str(form.get("mihpayid") or form.get("payuMoneyId") or "")
+    amount = str(form.get("amount") or "")
+    frontend = _frontend_base()
+
+    if not txnid:
+        return RedirectResponse(
+            url=f"{frontend}/checkout?payment=failed&reason=missing_txn",
+            status_code=303,
+        )
+
+    if not payu_lib.verify_response_hash(form):
+        logger.warning("PayU hash mismatch for txnid=%s status=%s", txnid, status)
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Payment).where(Payment.razorpay_order_id == txnid)
+            )
+            payment = result.scalar_one_or_none()
+            if payment and payment.status not in {"paid", "refunded"}:
+                payment.status = "failed"
+                payment.failure_reason = "payu_hash_mismatch"
+                payment.updated_at = utcnow()
+                await db.commit()
+        return RedirectResponse(
+            url=f"{frontend}/checkout?payment=failed&reason=hash",
+            status_code=303,
+        )
+
+    if status != "success" or not success_path:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Payment).where(Payment.razorpay_order_id == txnid)
+            )
+            payment = result.scalar_one_or_none()
+            if payment and payment.status not in {"paid", "refunded"}:
+                payment.status = "failed"
+                payment.razorpay_payment_id = mihpayid or payment.razorpay_payment_id
+                payment.failure_reason = status or "payu_failed"
+                payment.updated_at = utcnow()
+                await db.commit()
+        return RedirectResponse(
+            url=f"{frontend}/checkout?payment=failed&reason={status or 'failed'}",
+            status_code=303,
+        )
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Payment).where(Payment.razorpay_order_id == txnid)
+        )
+        payment = result.scalar_one_or_none()
+        if not payment:
+            return RedirectResponse(
+                url=f"{frontend}/checkout?payment=failed&reason=unknown_txn",
+                status_code=303,
+            )
+
+        expected = payu_lib.format_amount(payment.amount)
+        if amount and abs(float(amount) - float(expected)) > 0.05:
+            payment.status = "failed"
+            payment.failure_reason = "amount_mismatch"
+            payment.updated_at = utcnow()
+            await db.commit()
+            return RedirectResponse(
+                url=f"{frontend}/checkout?payment=failed&reason=amount",
+                status_code=303,
+            )
+
+        try:
+            verify = await payu_lib.verify_payment_api(txnid)
+            details = (verify.get("transaction_details") or {}).get(txnid) or {}
+            mapped = str(
+                details.get("status") or details.get("unmappedstatus") or ""
+            ).lower()
+            if details and mapped and mapped not in {"success", "captured", "completed"}:
+                logger.warning(
+                    "PayU verify_payment status unexpected txn=%s data=%s",
+                    txnid,
+                    details,
+                )
+        except Exception as exc:
+            logger.warning("PayU verify_payment API failed for %s: %s", txnid, exc)
+
+        user_id = None
+        if payment.checkout_snapshot:
+            user_id = payment.checkout_snapshot.get("user_id")
+
+        result_payload = await _fulfill_paid_payment(
+            payment,
+            mihpayid or txnid,
+            txnid,
+            user_id,
+            db,
+            payment_method="payu",
+        )
+        order_id = result_payload.get("order_id")
+        return RedirectResponse(
+            url=f"{frontend}/orders?order={order_id}&payment=success",
+            status_code=303,
         )
 
 
 async def handle_webhook(body: bytes, signature: str) -> dict:
     if not settings.RAZORPAY_WEBHOOK_SECRET:
         logger.warning("Razorpay webhook received but RAZORPAY_WEBHOOK_SECRET is empty")
-        # Still accept in development so dashboard tests don't hard-fail
         if settings.ENVIRONMENT.lower() not in ("development", "dev", "local"):
             raise HTTPException(
                 status_code=503, detail="Webhook secret is not configured"
@@ -385,6 +631,7 @@ async def _webhook_payment_success(entity: dict) -> None:
             if payment.checkout_snapshot
             else None,
             db,
+            payment_method="razorpay",
         )
 
 
@@ -414,7 +661,6 @@ async def _webhook_refund(entity: dict) -> None:
     razorpay_payment_id = entity.get("payment_id") or entity.get("id")
     if not razorpay_payment_id:
         return
-    # refund entity has payment_id; payment entity uses id
     pay_id = entity.get("payment_id") or None
     refund_id = entity.get("id") if entity.get("payment_id") else None
 
@@ -460,6 +706,13 @@ async def refund_payment(
         if payment.status != "paid" or not payment.razorpay_payment_id:
             raise HTTPException(
                 status_code=400, detail="Only paid Razorpay payments can be refunded"
+            )
+
+        snap = payment.checkout_snapshot or {}
+        if snap.get("payment_method") == "payu":
+            raise HTTPException(
+                status_code=400,
+                detail="PayU refunds must be done from the PayU merchant dashboard for now",
             )
 
         refund_rupees = float(amount) if amount is not None else float(payment.amount)

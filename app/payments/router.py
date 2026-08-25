@@ -14,7 +14,7 @@ router = APIRouter()
 
 @router.get("/config")
 async def payment_config():
-    """Public: whether Razorpay keys are set (never returns the secret)."""
+    """Public: whether online payment is configured (never returns secrets)."""
     return service.get_public_config()
 
 
@@ -47,6 +47,18 @@ async def verify(
     user=Depends(get_current_user),
 ):
     return await service.verify_payment(payload.model_dump(), user_id=int(user["id"]))
+
+
+@router.post("/payu/success")
+async def payu_success(request: Request):
+    form = dict(await request.form())
+    return await service.handle_payu_callback(form, success_path=True)
+
+
+@router.post("/payu/failure")
+async def payu_failure(request: Request):
+    form = dict(await request.form())
+    return await service.handle_payu_callback(form, success_path=False)
 
 
 @router.post("/webhook")

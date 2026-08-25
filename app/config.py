@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     API_V1_PREFIX: str = "/api/v1"
     FRONTEND_URL: str = "http://localhost:3000"
+    # Public API base for PayU surl/furl (e.g. https://api.chakladekho.com/api/v1)
+    API_PUBLIC_URL: str = ""
     # Comma-separated extra origins (e.g. Vercel preview + custom domain)
     CORS_ORIGINS: str = ""
 
@@ -44,6 +46,12 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_ID: str = ""
     RAZORPAY_KEY_SECRET: str = ""
     RAZORPAY_WEBHOOK_SECRET: str = ""
+
+    # PayU Biz (preferred online checkout when configured)
+    PAYU_KEY: str = ""
+    PAYU_SALT: str = ""
+    # live | test
+    PAYU_MODE: str = "live"
 
     SHIPROCKET_EMAIL: str = ""
     SHIPROCKET_PASSWORD: str = ""

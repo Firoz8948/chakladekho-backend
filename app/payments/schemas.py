@@ -42,17 +42,22 @@ class CreatePaymentOrderRequest(CheckoutPayload):
 
 
 class CreatePaymentOrderResponse(BaseModel):
-    razorpay_order_id: str
-    amount: int
-    currency: str
-    key_id: str
+    provider: str = "payu"
     payment_id: str | None = None
+    amount: float | int
+    currency: str = "INR"
+    # PayU hosted checkout
+    payment_url: str | None = None
+    payu: dict | None = None
+    # Razorpay (legacy)
+    razorpay_order_id: str | None = None
+    key_id: str | None = None
 
 
 class VerifyPaymentRequest(BaseModel):
-    razorpay_order_id: str
-    razorpay_payment_id: str
-    razorpay_signature: str
+    razorpay_order_id: str | None = None
+    razorpay_payment_id: str | None = None
+    razorpay_signature: str | None = None
     meta_event_id: str | None = None
     meta_fbp: str | None = None
     meta_fbc: str | None = None

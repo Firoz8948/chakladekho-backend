@@ -38,6 +38,7 @@ class PaymentStatus(str, enum.Enum):
 class PaymentMethod(str, enum.Enum):
     cod = "cod"
     razorpay = "razorpay"
+    payu = "payu"
 
 
 class UserRole(str, enum.Enum):

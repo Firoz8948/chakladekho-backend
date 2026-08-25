@@ -183,13 +183,17 @@ async def create_order_from_checkout(
     razorpay_payment_id: str,
     razorpay_order_id: str,
     user_id: int | None = None,
+    payment_method: str = "razorpay",
 ) -> dict:
+    method = (payment_method or checkout.get("payment_method") or "razorpay").lower()
+    if method not in {"razorpay", "payu"}:
+        method = "razorpay"
     return await create_customer_order(
         customer=checkout["customer"],
         address=checkout["address"],
         items=checkout["items"],
         user_id=user_id,
-        payment_method="razorpay",
+        payment_method=method,
         payment_status="paid",
         order_status="processing",
         razorpay_payment_id=razorpay_payment_id,

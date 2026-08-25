@@ -234,7 +234,7 @@ async def quote_shipping(
         resolved_state = lookup_state_from_pincode(pincode)
 
     method = (payment_method or "prepaid").strip().lower()
-    if method == "razorpay":
+    if method in {"razorpay", "payu"}:
         method = "prepaid"
 
     zone = await find_zone_for_state(db, resolved_state)
