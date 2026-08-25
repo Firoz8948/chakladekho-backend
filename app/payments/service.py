@@ -62,13 +62,26 @@ def get_public_config() -> dict:
 
 
 def _api_public_base() -> str:
-    """Absolute API origin used for PayU surl/furl callbacks."""
+    """Absolute API origin used for PayU surl/furl callbacks.
+
+    Preference:
+    1. API_PUBLIC_URL (full URL, optional)
+    2. Derive from FRONTEND_URL for ChaklaDekho (api.chakladekho.com + API_V1_PREFIX)
+    3. Localhost for development
+    """
     base = (settings.API_PUBLIC_URL or "").rstrip("/")
     if base:
         return base
+
+    frontend = (settings.FRONTEND_URL or "").lower()
+    prefix = settings.API_V1_PREFIX or "/api/v1"
+    if "chakladekho.com" in frontend or "chakladekho.in" in frontend:
+        return f"https://api.chakladekho.com{prefix}"
+
     if settings.ENVIRONMENT.lower() in {"production", "prod"}:
-        return "https://api.chakladekho.com/api/v1"
-    return f"http://localhost:8000{settings.API_V1_PREFIX}"
+        return f"https://api.chakladekho.com{prefix}"
+
+    return f"http://localhost:8000{prefix}"
 
 
 def _frontend_base() -> str:
