@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.database import AsyncSessionLocal
 from app.models import Admin
 from app.sms.send_admin_new_order import send_admin_new_order_sms
+from app.sms.send_order_delivered import send_order_delivered_sms
 from app.sms.send_order_success import send_order_success_sms
 
 logger = logging.getLogger("orders.notifications")
@@ -73,4 +74,29 @@ async def notify_order_placed(
         results["admin"] = {"skipped": True, "reason": "admin_phone_not_set"}
         logger.info("Admin order SMS skipped — set phone in Admin Profile")
 
+    return results
+
+
+async def notify_order_delivered(
+    *,
+    customer_phone: str | None,
+    customer_name: str | None,
+    order_id: str,
+) -> dict:
+    """Send customer SMS when an order is marked delivered."""
+    results = {"customer": None}
+    cust_phone = _digits_phone(customer_phone)
+    if not cust_phone:
+        results["customer"] = {"skipped": True, "reason": "invalid_customer_phone"}
+        return results
+
+    try:
+        results["customer"] = await send_order_delivered_sms(
+            cust_phone,
+            customer_name or "Customer",
+            order_id,
+        )
+    except Exception as exc:
+        logger.warning("Customer delivered SMS failed: %s", exc)
+        results["customer"] = {"success": False, "error": str(exc)}
     return results

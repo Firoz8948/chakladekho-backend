@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.common import serialize_order, utcnow
 from app.database import AsyncSessionLocal
 from app.models import Order, OrderItem
-from app.orders.notifications import notify_order_placed
+from app.orders.notifications import notify_order_delivered, notify_order_placed
 
 from .models import ORDER_STATUSES, calc_subtotal, generate_order_id, normalize_items, total_cart_weight_grams
 
@@ -223,11 +223,27 @@ async def update_status(order_id: str, status: str) -> dict:
         order = await _load_order(db, order_id)
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
+        previous_status = order.order_status
         order.order_status = status
         order.updated_at = utcnow()
         await db.commit()
         await db.refresh(order, ["items"])
-        return serialize_order(order)
+        customer_phone = order.customer_phone
+        customer_name = order.customer_name
+        public_order_id = order.order_id
+        payload = serialize_order(order)
+
+    if status == "delivered" and previous_status != "delivered":
+        try:
+            await notify_order_delivered(
+                customer_phone=customer_phone,
+                customer_name=customer_name,
+                order_id=public_order_id,
+            )
+        except Exception as exc:
+            logger.warning("Order delivered notifications failed: %s", exc)
+
+    return payload
 
 
 async def list_user_orders(db: AsyncSession, user_id: int, limit: int = 20) -> list[dict]:
