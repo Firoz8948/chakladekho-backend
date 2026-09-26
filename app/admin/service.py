@@ -510,6 +510,7 @@ async def create_custom_order(db: AsyncSession, data: dict) -> dict:
         payment_status=payment_status,
         order_status="processing",
         shipping_charge_override=shipping_charge,
+        is_custom=True,
     )
 
 

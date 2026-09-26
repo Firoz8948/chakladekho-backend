@@ -106,6 +106,7 @@ def serialize_order(order) -> dict:
         "payment_method": order.payment_method,
         "payment_status": order.payment_status,
         "order_status": order.order_status,
+        "is_custom": bool(getattr(order, "is_custom", False)),
         "razorpay_order_id": order.razorpay_order_id,
         "razorpay_payment_id": order.razorpay_payment_id,
         "items": [

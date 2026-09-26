@@ -255,6 +255,7 @@ class Order(Base):
     payment_method: Mapped[str] = mapped_column(String(50), nullable=False)
     payment_status: Mapped[str] = mapped_column(String(50), default="pending")
     order_status: Mapped[str] = mapped_column(String(50), default="pending")
+    is_custom: Mapped[bool] = mapped_column(Boolean, default=False)
 
     razorpay_order_id: Mapped[Optional[str]] = mapped_column(String(255))
     razorpay_payment_id: Mapped[Optional[str]] = mapped_column(String(255))

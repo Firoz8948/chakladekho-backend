@@ -156,6 +156,11 @@ async def connect_db():
         )
         await conn.execute(
             text(
+                "ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_custom BOOLEAN DEFAULT FALSE"
+            )
+        )
+        await conn.execute(
+            text(
                 "ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS audience VARCHAR(20) DEFAULT 'all'"
             )
         )
