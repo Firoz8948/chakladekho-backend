@@ -63,7 +63,7 @@ async def dashboard_stats(
 @router.get("/products")
 async def list_products(
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=200),
     category: str | None = None,
     search: str | None = None,
     _=Depends(get_current_admin),
