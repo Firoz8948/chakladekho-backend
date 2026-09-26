@@ -49,6 +49,7 @@ async def create_customer_order(
     razorpay_payment_id: str | None = None,
     razorpay_order_id: str | None = None,
     promo_code: str | None = None,
+    shipping_charge_override: float | None = None,
     meta_event_id: str | None = None,
     meta_fbp: str | None = None,
     meta_fbc: str | None = None,
@@ -66,14 +67,17 @@ async def create_customer_order(
         from app.promocodes import service as promo_service
         from app.shipping_zones import service as zone_service
 
-        shipping = await zone_service.resolve_shipping_charge(
-            db,
-            subtotal=subtotal,
-            state=address.get("state"),
-            pincode=address.get("pincode"),
-            weight_grams=weight,
-            payment_method=payment_method,
-        )
+        if shipping_charge_override is not None:
+            shipping = max(0.0, float(shipping_charge_override))
+        else:
+            shipping = await zone_service.resolve_shipping_charge(
+                db,
+                subtotal=subtotal,
+                state=address.get("state"),
+                pincode=address.get("pincode"),
+                weight_grams=weight,
+                payment_method=payment_method,
+            )
 
         discount = 0.0
         applied_code = None

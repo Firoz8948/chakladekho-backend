@@ -22,6 +22,30 @@ class AdminProfileUpdateRequest(BaseModel):
     company_name: Optional[str] = None
 
 
+class CustomOrderCustomer(BaseModel):
+    name: str = Field(..., min_length=2)
+    phone: str = Field(..., min_length=10, max_length=15)
+    email: Optional[str] = None
+
+
+class CustomOrderAddress(BaseModel):
+    line1: str = Field(..., min_length=3)
+    line2: Optional[str] = None
+    landmark: Optional[str] = None
+    city: str = Field(..., min_length=2)
+    state: str = Field(..., min_length=2)
+    pincode: str = Field(..., min_length=6, max_length=6)
+
+
+class CustomOrderRequest(BaseModel):
+    product_id: int
+    quantity: int = Field(1, ge=1, le=999)
+    shipping_charge: float = Field(..., ge=0)
+    payment_type: str = Field(..., description="cod | paid")
+    customer: CustomOrderCustomer
+    address: CustomOrderAddress
+
+
 class TokenData(BaseModel):
     admin_id: str
     email: str

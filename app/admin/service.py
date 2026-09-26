@@ -429,6 +429,90 @@ async def get_all_orders(
     return {"orders": orders, "total": total, "page": page, "limit": limit}
 
 
+async def create_custom_order(db: AsyncSession, data: dict) -> dict:
+    """Admin-created order: product + address + manual shipping + COD/paid."""
+    payment_type = (data.get("payment_type") or "").strip().lower()
+    if payment_type not in {"cod", "paid"}:
+        raise HTTPException(status_code=400, detail="payment_type must be cod or paid")
+
+    product_id = int(data["product_id"])
+    quantity = int(data.get("quantity") or 1)
+    if quantity < 1:
+        raise HTTPException(status_code=400, detail="quantity must be at least 1")
+
+    try:
+        shipping_charge = float(data["shipping_charge"])
+    except (TypeError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail="shipping_charge is required") from exc
+    if shipping_charge < 0:
+        raise HTTPException(status_code=400, detail="shipping_charge cannot be negative")
+
+    result = await db.execute(
+        select(Product)
+        .options(selectinload(Product.images))
+        .where(Product.id == product_id)
+    )
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if not product.is_active:
+        raise HTTPException(status_code=400, detail="Product is not active")
+
+    images = sorted(product.images or [], key=lambda img: getattr(img, "position", 0) or 0)
+    image_url = images[0].url if images else None
+
+    customer = data.get("customer") or {}
+    address = data.get("address") or {}
+    phone = str(customer.get("phone") or "").strip()
+    if len(re.sub(r"\D", "", phone)) < 10:
+        raise HTTPException(status_code=400, detail="Enter a valid customer phone")
+
+    items = [
+        {
+            "product_id": str(product.id),
+            "name": product.name,
+            "price": float(product.price),
+            "quantity": quantity,
+            "image": image_url,
+            "weight": product.weight,
+            "weight_grams": float(product.weight) if product.weight is not None else None,
+        }
+    ]
+
+    if payment_type == "cod":
+        payment_method = "cod"
+        payment_status = "pending"
+    else:
+        # Offline / already collected — treat as prepaid for fulfillment.
+        payment_method = "manual"
+        payment_status = "paid"
+
+    from app.orders import service as orders_service
+
+    return await orders_service.create_customer_order(
+        customer={
+            "name": (customer.get("name") or "").strip(),
+            "phone": phone,
+            "mobile": phone,
+            "email": customer.get("email") or None,
+        },
+        address={
+            "line1": (address.get("line1") or "").strip(),
+            "line2": (address.get("line2") or "").strip() or None,
+            "landmark": (address.get("landmark") or "").strip() or None,
+            "city": (address.get("city") or "").strip(),
+            "state": (address.get("state") or "").strip(),
+            "pincode": (address.get("pincode") or "").strip(),
+        },
+        items=items,
+        user_id=None,
+        payment_method=payment_method,
+        payment_status=payment_status,
+        order_status="processing",
+        shipping_charge_override=shipping_charge,
+    )
+
+
 async def update_order_status(
     db: AsyncSession, order_id: str, status: str
 ) -> dict | None:
@@ -442,10 +526,26 @@ async def update_order_status(
     order = result.scalar_one_or_none()
     if not order:
         return None
+    previous_status = order.order_status
     order.order_status = status
     order.updated_at = utcnow()
     await db.commit()
-    return serialize_order(order)
+    await db.refresh(order, ["items"])
+    payload = serialize_order(order)
+
+    if status == "delivered" and previous_status != "delivered":
+        try:
+            from app.orders.notifications import notify_order_delivered
+
+            await notify_order_delivered(
+                customer_phone=order.customer_phone,
+                customer_name=order.customer_name,
+                order_id=order.order_id,
+            )
+        except Exception as exc:
+            logger.warning("Order delivered notifications failed: %s", exc)
+
+    return payload
 
 
 async def get_all_payments(

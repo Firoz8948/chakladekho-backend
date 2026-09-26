@@ -12,6 +12,7 @@ from . import service
 from .schemas import (
     AdminLoginResponse,
     AdminProfileUpdateRequest,
+    CustomOrderRequest,
     DashboardStats,
     ProductCreateRequest,
     ProductUpdateRequest,
@@ -171,6 +172,16 @@ async def list_orders(
     db: AsyncSession = Depends(get_db),
 ):
     return await service.get_all_orders(db, page, limit, status)
+
+
+@router.post("/orders/custom")
+async def create_custom_order(
+    body: CustomOrderRequest,
+    _=Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a real order from admin (COD or manually paid)."""
+    return await service.create_custom_order(db, body.model_dump())
 
 
 @router.put("/orders/{order_id}/status")
