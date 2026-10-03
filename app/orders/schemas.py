@@ -1,10 +1,19 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+from app.common import validate_person_name
 
 
 class CustomerInfo(BaseModel):
     name: str = Field(..., min_length=2)
     mobile: str = Field(..., min_length=10, max_length=15)
     email: EmailStr | None = None
+
+
+class CheckoutCustomerInfo(CustomerInfo):
+    @field_validator("name")
+    @classmethod
+    def _real_name(cls, value: str) -> str:
+        return validate_person_name(value)
 
 
 class AddressInfo(BaseModel):
@@ -29,7 +38,7 @@ class OrderItem(BaseModel):
 
 
 class GuestCreateOrderRequest(BaseModel):
-    customer: CustomerInfo
+    customer: CheckoutCustomerInfo
     address: AddressInfo
     items: list[OrderItem] = Field(..., min_length=1)
     payment_method: str = Field(default="cod", description="cod | razorpay")

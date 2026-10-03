@@ -1,10 +1,17 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+from app.common import validate_person_name
 
 
 class CustomerInfo(BaseModel):
     name: str = Field(..., min_length=2)
     mobile: str = Field(..., min_length=10, max_length=15)
     email: EmailStr | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _real_name(cls, value: str) -> str:
+        return validate_person_name(value)
 
 
 class AddressInfo(BaseModel):

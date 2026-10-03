@@ -1,10 +1,31 @@
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy import inspect as sa_inspect
 
+_PLACEHOLDER_NAME_RE = re.compile(r"^customer(\s+\d+)?$", re.IGNORECASE)
+# Shipmozo rejects digits and symbols in consignee names.
+_PERSON_NAME_RE = re.compile(r"^[A-Za-z]+( [A-Za-z]+)*$")
+
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def is_placeholder_name(name: str | None) -> bool:
+    return bool(_PLACEHOLDER_NAME_RE.match((name or "").strip()))
+
+
+def validate_person_name(value: str | None) -> str:
+    """Normalize a customer's full name; raise ValueError if it is unusable."""
+    name = " ".join(str(value or "").split())
+    if len(name) < 2:
+        raise ValueError("Enter your full name")
+    if is_placeholder_name(name):
+        raise ValueError("Enter your real full name")
+    if not _PERSON_NAME_RE.match(name):
+        raise ValueError("Name can contain only letters and spaces")
+    return name
 
 
 def serialize_product(product, include_relations=True) -> dict:

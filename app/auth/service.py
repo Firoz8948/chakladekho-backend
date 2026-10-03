@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.common import serialize_user
+from app.common import is_placeholder_name, serialize_user
 from app.models import User
 
 from .utils import create_access_token, create_refresh_token, decode_token, verify_password
@@ -34,18 +34,17 @@ async def get_or_create_user_by_phone(
     user = result.scalar_one_or_none()
 
     if not user:
-        derived_name = name.strip() or f"Customer {phone[-4:]}"
         user = User(
             phone=phone,
             email=f"{phone}@mobile.chakladkho.local",
-            name=derived_name,
+            name=name.strip() or None,
             role="customer",
             is_active=True,
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
-    elif name.strip() and not user.name:
+    elif name.strip() and (not user.name or is_placeholder_name(user.name)):
         user.name = name.strip()
         await db.commit()
         await db.refresh(user)

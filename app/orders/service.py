@@ -5,9 +5,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.common import serialize_order, utcnow
+from app.common import is_placeholder_name, serialize_order, utcnow
 from app.database import AsyncSessionLocal
-from app.models import Order, OrderItem
+from app.models import Order, OrderItem, User
 from app.orders.notifications import notify_order_delivered, notify_order_placed
 
 from .models import ORDER_STATUSES, calc_subtotal, generate_order_id, normalize_items, total_cart_weight_grams
@@ -119,6 +119,12 @@ async def create_customer_order(
         )
         db.add(order)
         await db.flush()
+
+        checkout_name = " ".join(str(customer.get("name") or "").split())
+        if user_id and checkout_name and not is_placeholder_name(checkout_name):
+            profile = await db.get(User, int(user_id))
+            if profile and profile.name != checkout_name:
+                profile.name = checkout_name
 
         for item in normalized:
             pid = item.get("product_id")

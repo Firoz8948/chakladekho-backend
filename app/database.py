@@ -160,6 +160,9 @@ async def connect_db():
             )
         )
         await conn.execute(
+            text("UPDATE users SET name = NULL WHERE name ~* '^customer( +[0-9]+)?$'")
+        )
+        await conn.execute(
             text(
                 "ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS audience VARCHAR(20) DEFAULT 'all'"
             )
