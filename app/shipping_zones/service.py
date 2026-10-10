@@ -6,12 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ShippingZone
-from app.orders.models import (
-    FLAT_SHIPPING_CHARGE,
-    FREE_SHIPPING_THRESHOLD,
-    FREE_WEIGHT_GRAMS,
-    WEIGHT_SURCHARGE_PER_KG,
-)
+from app.orders.models import FLAT_SHIPPING_CHARGE, FREE_SHIPPING_THRESHOLD
 
 
 def serialize_zone(zone: ShippingZone) -> dict:
@@ -103,7 +98,6 @@ def lookup_pincode_details(pincode: str) -> dict | None:
 def calc_zone_shipping(
     subtotal: float,
     base_rate: float,
-    total_weight_grams: float = 0,
     free_threshold: float | None = None,
 ) -> float:
     threshold = (
@@ -112,15 +106,8 @@ def calc_zone_shipping(
     if subtotal <= 0:
         return 0.0
     if threshold > 0 and subtotal >= threshold:
-        charge = 0.0
-    else:
-        charge = float(base_rate)
-
-    if total_weight_grams > FREE_WEIGHT_GRAMS:
-        extra_kg = (total_weight_grams - FREE_WEIGHT_GRAMS) / 1000
-        charge += round(extra_kg * WEIGHT_SURCHARGE_PER_KG, 2)
-
-    return round(charge, 2)
+        return 0.0
+    return round(float(base_rate), 2)
 
 
 async def list_zones(db: AsyncSession, active_only: bool = False) -> list[dict]:
@@ -242,17 +229,9 @@ async def quote_shipping(
         prepaid_base = zone_base_rate(zone, "prepaid")
         cod_base = zone_base_rate(zone, "cod")
         prepaid_charge = calc_zone_shipping(
-            subtotal,
-            prepaid_base,
-            weight_grams,
-            zone.free_shipping_threshold,
+            subtotal, prepaid_base, zone.free_shipping_threshold
         )
-        cod_charge = calc_zone_shipping(
-            subtotal,
-            cod_base,
-            weight_grams,
-            zone.free_shipping_threshold,
-        )
+        cod_charge = calc_zone_shipping(subtotal, cod_base, zone.free_shipping_threshold)
         charge = cod_charge if method == "cod" else prepaid_charge
         base_rate = cod_base if method == "cod" else prepaid_base
         return {
@@ -274,7 +253,7 @@ async def quote_shipping(
         }
 
     prepaid_charge = calc_zone_shipping(
-        subtotal, FLAT_SHIPPING_CHARGE, weight_grams, FREE_SHIPPING_THRESHOLD
+        subtotal, FLAT_SHIPPING_CHARGE, FREE_SHIPPING_THRESHOLD
     )
     return {
         "shipping_charge": prepaid_charge,

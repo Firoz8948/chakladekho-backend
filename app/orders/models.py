@@ -5,25 +5,16 @@ PAYMENT_STATUSES = ["pending", "paid", "failed", "refunded"]
 
 FREE_SHIPPING_THRESHOLD = 999
 FLAT_SHIPPING_CHARGE = 49
-FREE_WEIGHT_GRAMS = 1000
-WEIGHT_SURCHARGE_PER_KG = 15
 
 
 def generate_order_id() -> str:
     return "ORD-" + utcnow().strftime("%Y-%m%d%H%M%S")
 
 
-def calc_shipping(subtotal: float, total_weight_grams: float = 0) -> float:
+def calc_shipping(subtotal: float) -> float:
     if subtotal >= FREE_SHIPPING_THRESHOLD or subtotal <= 0:
-        charge = 0.0
-    else:
-        charge = float(FLAT_SHIPPING_CHARGE)
-
-    if total_weight_grams > FREE_WEIGHT_GRAMS:
-        extra_kg = (total_weight_grams - FREE_WEIGHT_GRAMS) / 1000
-        charge += round(extra_kg * WEIGHT_SURCHARGE_PER_KG, 2)
-
-    return charge
+        return 0.0
+    return float(FLAT_SHIPPING_CHARGE)
 
 
 def _item_weight_grams(item: dict) -> float:
@@ -80,7 +71,7 @@ def new_guest_order_doc(
     now = utcnow()
     items = normalize_items(items)
     subtotal = calc_subtotal(items)
-    shipping = calc_shipping(subtotal, total_cart_weight_grams(items))
+    shipping = calc_shipping(subtotal)
     order_id = generate_order_id()
 
     return {
