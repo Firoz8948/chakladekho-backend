@@ -3,8 +3,8 @@ from app.common import utcnow
 ORDER_STATUSES = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"]
 PAYMENT_STATUSES = ["pending", "paid", "failed", "refunded"]
 
-FREE_SHIPPING_THRESHOLD = 999
-FLAT_SHIPPING_CHARGE = 49
+FREE_SHIPPING_THRESHOLD = 0
+FLAT_SHIPPING_CHARGE = 0
 
 
 def generate_order_id() -> str:

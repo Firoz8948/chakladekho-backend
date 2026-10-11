@@ -134,6 +134,11 @@ def build_facebook_rss(products: list[Product]) -> str:
       <g:identifier_exists>false</g:identifier_exists>
       <g:product_type>{escape(row['product_type'])}</g:product_type>
       <g:google_product_category>{escape(row['google_product_category'])}</g:google_product_category>
+      <g:shipping>
+        <g:country>IN</g:country>
+        <g:service>Standard</g:service>
+        <g:price>0.00 INR</g:price>
+      </g:shipping>
     </item>"""
         )
 
