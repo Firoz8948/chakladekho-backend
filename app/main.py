@@ -13,6 +13,7 @@ from app.config import settings
 from app.contact.router import router as contact_router
 from app.database import connect_db, disconnect_db
 from app.feeds.router import router as feeds_router
+from app.free_gift.router import router as free_gift_router
 from app.meta.router import router as meta_router
 from app.metafields.router import router as metafields_router
 from app.orders.router import router as orders_router
@@ -68,6 +69,7 @@ app.include_router(
     shipping_zones_router, prefix=f"{prefix}/shipping-zones", tags=["Shipping Zones"]
 )
 app.include_router(feeds_router, prefix=f"{prefix}/feeds", tags=["Catalog Feeds"])
+app.include_router(free_gift_router, prefix=f"{prefix}/free-gift", tags=["Free Gift"])
 app.include_router(meta_router, prefix=f"{prefix}/meta", tags=["Meta"])
 
 

@@ -483,6 +483,23 @@ class PromoCode(Base):
     )
 
 
+class FreeGift(Base):
+    """Single-row setting: the gift added to every order when active."""
+
+    __tablename__ = "free_gifts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[Optional[str]] = mapped_column(String(255))
+    image_url: Mapped[Optional[str]] = mapped_column(String(500))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ShippingZone(Base):
     __tablename__ = "shipping_zones"
 
