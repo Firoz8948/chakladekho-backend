@@ -1,12 +1,17 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from app.common import validate_person_name
+from app.common import clean_customer_email, validate_person_name
 
 
 class CustomerInfo(BaseModel):
     name: str = Field(..., min_length=2)
     mobile: str = Field(..., min_length=10, max_length=15)
     email: EmailStr | None = None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _drop_placeholder_email(cls, value):
+        return clean_customer_email(value)
 
     @field_validator("name")
     @classmethod

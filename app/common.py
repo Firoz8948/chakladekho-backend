@@ -16,6 +16,21 @@ def is_placeholder_name(name: str | None) -> bool:
     return bool(_PLACEHOLDER_NAME_RE.match((name or "").strip()))
 
 
+def is_placeholder_email(email: str | None) -> bool:
+    # Phone-OTP signups store "<phone>@mobile.chakladkho.local", which email
+    # validators reject as a reserved domain.
+    return (email or "").strip().lower().endswith(".local")
+
+
+def clean_customer_email(value):
+    if value is None:
+        return None
+    email = str(value).strip()
+    if not email or is_placeholder_email(email):
+        return None
+    return email
+
+
 def validate_person_name(value: str | None) -> str:
     """Normalize a customer's full name; raise ValueError if it is unusable."""
     name = " ".join(str(value or "").split())
